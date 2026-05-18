@@ -2,75 +2,120 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
+import Logo from "./Logo";
+import { SPECIES_LIST } from "@/lib/types";
+import { getCollection } from "@/lib/collection";
 
-const navLinks = [
-  { href: "/identify", label: "Identify" },
-  { href: "/collection", label: "Collection" },
-  { href: "/conservation", label: "Conservation" },
+const navItems = [
+  { href: "/", label: "Home", match: (p: string) => p === "/" },
+  { href: "/identify", label: "Identify", match: (p: string) => p.startsWith("/identify") },
+  { href: "/collection", label: "Collection", match: (p: string) => p.startsWith("/collection") },
+  { href: "/conservation", label: "Conservation", match: (p: string) => p.startsWith("/conservation") },
 ];
-
-function getUserLevel(cardCount: number): { label: string; emoji: string } {
-  if (cardCount >= 51) return { label: "Legendary", emoji: "🦁" };
-  if (cardCount >= 31) return { label: "Expert", emoji: "🏕" };
-  if (cardCount >= 16) return { label: "Tracker", emoji: "🥾" };
-  if (cardCount >= 6) return { label: "Scout", emoji: "🔭" };
-  return { label: "Novice", emoji: "🌱" };
-}
-
-const mockUser = { name: "Joyce", avatarInitial: "J", cardCount: 2 };
 
 export default function TopNav() {
   const pathname = usePathname();
-  const level = getUserLevel(mockUser.cardCount);
+  const [count, setCount] = useState(0);
+  const total = SPECIES_LIST.length;
+
+  useEffect(() => {
+    const sync = () => setCount(getCollection().length);
+    sync();
+    window.addEventListener("storage", sync);
+    window.addEventListener("poopidex:collection-updated", sync);
+    return () => {
+      window.removeEventListener("storage", sync);
+      window.removeEventListener("poopidex:collection-updated", sync);
+    };
+  }, []);
 
   return (
-    <header className="fixed top-0 left-0 right-0 z-50 bg-white/90 backdrop-blur-sm border-b border-gray-100 h-14">
-      <div className="max-w-4xl mx-auto h-full flex items-center justify-between px-4">
-        <Link href="/" className="flex items-center gap-2 font-black text-green-800 text-lg">
-          <span>💩</span>
-          <span>Poopidex</span>
-        </Link>
-
-        <nav className="hidden sm:flex items-center gap-1">
-          {navLinks.map((link) => (
+    <nav
+      style={{
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        padding: "16px 40px",
+        borderBottom: "1px solid var(--bone-3)",
+        background: "var(--bone)",
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+      }}
+    >
+      <Link
+        href="/"
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 10,
+          textDecoration: "none",
+          color: "var(--ink)",
+        }}
+      >
+        <Logo />
+        <div
+          className="sd-display"
+          style={{ fontSize: 20, fontWeight: 700, letterSpacing: "-0.02em" }}
+        >
+          Poop<span style={{ color: "var(--forest)" }}>·</span>idex
+        </div>
+      </Link>
+      <div style={{ display: "flex", gap: 4 }}>
+        {navItems.map((it) => {
+          const active = it.match(pathname);
+          return (
             <Link
-              key={link.href}
-              href={link.href}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium transition-colors ${
-                pathname === link.href
-                  ? "bg-green-100 text-green-800"
-                  : "text-gray-500 hover:text-gray-800 hover:bg-gray-100"
-              }`}
+              key={it.href}
+              href={it.href}
+              style={{
+                padding: "8px 14px",
+                borderRadius: 999,
+                fontSize: 13.5,
+                fontWeight: 600,
+                color: active ? "var(--bone)" : "var(--ink-2)",
+                background: active ? "var(--ink)" : "transparent",
+                textDecoration: "none",
+                transition: "background .14s, color .14s",
+              }}
             >
-              {link.label}
+              {it.label}
             </Link>
-          ))}
-        </nav>
-
-        <div className="flex items-center gap-2">
-          <span className="hidden sm:flex items-center gap-1 text-xs font-semibold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-            {level.emoji} {level.label}
-          </span>
-          <span className="hidden sm:block text-sm font-medium text-gray-700">{mockUser.name}</span>
-          <div className="w-8 h-8 rounded-full bg-green-700 text-white flex items-center justify-center text-sm font-bold">
-            {mockUser.avatarInitial}
-          </div>
+          );
+        })}
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        <div
+          className="sd-mono"
+          style={{
+            fontSize: 11,
+            color: "var(--ink-3)",
+            padding: "6px 10px",
+            background: "var(--bone-2)",
+            borderRadius: 999,
+          }}
+        >
+          {count} / {total}
+        </div>
+        <div
+          style={{
+            width: 32,
+            height: 32,
+            borderRadius: 999,
+            background: "var(--forest)",
+            color: "var(--bone)",
+            fontFamily: "var(--font-display)",
+            fontWeight: 700,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            fontSize: 13,
+          }}
+        >
+          JZ
         </div>
       </div>
-
-      <div className="sm:hidden flex gap-1 px-4 pb-2 overflow-x-auto">
-        {navLinks.map((link) => (
-          <Link
-            key={link.href}
-            href={link.href}
-            className={`px-3 py-1 rounded-full text-xs font-semibold whitespace-nowrap transition-colors ${
-              pathname === link.href ? "bg-green-700 text-white" : "bg-gray-100 text-gray-500"
-            }`}
-          >
-            {link.label}
-          </Link>
-        ))}
-      </div>
-    </header>
+    </nav>
   );
 }
