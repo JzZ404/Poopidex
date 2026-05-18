@@ -4,7 +4,11 @@ Snap a photo of wild animal scat, get a collectible field-guide card. Build your
 
 > **Gotta log 'em all.**
 
-🔗 **Live URL:** *(coming soon — added at deploy time)*
+🔗 **Live URL:** **https://poopidex.vercel.app** — open in any browser, no install needed.
+
+🟢 **Service health:**
+- Frontend (Vercel) — https://poopidex.vercel.app
+- YOLO inference (Hugging Face Space) — https://huggingface.co/spaces/JZ0317/poopidex-yolo · [health check](https://jz0317-poopidex-yolo.hf.space/health)
 
 ---
 
