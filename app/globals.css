@@ -1,26 +1,254 @@
 @import "tailwindcss";
 
+/* Poopidex — design tokens (v2 · illustrated field-guide) */
+
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  /* ─── Surfaces · warm paper ─────────────────────────── */
+  --bone:    oklch(0.96 0.020 78);
+  --bone-2:  oklch(0.93 0.024 75);
+  --bone-3:  oklch(0.88 0.028 72);
+  --paper:   oklch(0.985 0.014 80);
+  --paper-2: oklch(0.97 0.020 80);
+
+  /* ─── Ink · warm brown-black, not slate ─────────────── */
+  --ink:   oklch(0.22 0.030 50);
+  --ink-2: oklch(0.36 0.028 55);
+  --ink-3: oklch(0.54 0.024 60);
+  --ink-4: oklch(0.72 0.020 65);
+
+  /* ─── Brand · earthy moss + warm umber ──────────────── */
+  --forest:   oklch(0.38 0.055 135);
+  --forest-2: oklch(0.50 0.070 135);
+  --moss:     oklch(0.62 0.080 130);
+  --umber:    oklch(0.42 0.075 55);
+  --clay:     oklch(0.65 0.095 50);
+  --honey:    oklch(0.78 0.110 75);
+  --wash:     oklch(0.92 0.04 70);
+
+  /* ─── Rarity ───────────────────────────────────────── */
+  --r-common:      oklch(0.56 0.025 70);
+  --r-common-bg:   oklch(0.95 0.022 75);
+  --r-uncommon:    oklch(0.55 0.080 135);
+  --r-uncommon-bg: oklch(0.94 0.040 130);
+  --r-rare:        oklch(0.55 0.080 235);
+  --r-rare-bg:     oklch(0.93 0.035 230);
+  --r-legendary:   oklch(0.70 0.130 70);
+  --r-legendary-bg:oklch(0.95 0.055 75);
+
+  /* ─── Semantic ───────────────────────────────────── */
+  --danger: oklch(0.55 0.180 30);
+  --warn:   oklch(0.72 0.140 70);
+  --info:   oklch(0.55 0.110 235);
+  --ok:     oklch(0.56 0.110 140);
+
+  /* ─── Radii ────────────────────────────────────────── */
+  --r-xs: 6px; --r-sm: 10px; --r-md: 14px; --r-lg: 20px; --r-xl: 28px;
+
+  /* ─── Shadows · warm brown tints ───────────────────── */
+  --sh-1: 0 1px 2px rgba(70,40,20,.05), 0 1px 1px rgba(70,40,20,.04);
+  --sh-2: 0 6px 18px rgba(70,40,20,.08), 0 2px 4px rgba(70,40,20,.04);
+  --sh-3: 0 22px 48px rgba(70,40,20,.14), 0 8px 18px rgba(70,40,20,.07);
+  --sh-card: 0 36px 70px -22px rgba(70,40,20,.30), 0 14px 30px -18px rgba(70,40,20,.22);
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+html, body {
+  font-family: var(--font-ui), 'Plus Jakarta Sans', ui-sans-serif, system-ui, sans-serif;
+  color: var(--ink);
+  background: var(--bone);
+  background-image:
+    radial-gradient(ellipse 1200px 600px at 20% -10%, var(--wash) 0%, transparent 60%),
+    radial-gradient(ellipse 900px 500px at 100% 110%, oklch(0.95 0.03 60) 0%, transparent 60%),
+    url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='220' height='220'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' seed='3'/><feColorMatrix values='0 0 0 0 0.3  0 0 0 0 0.22  0 0 0 0 0.12  0 0 0 0.06 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+button { font-family: inherit; }
+
+/* ─── Utilities ─────────────────────────────────────── */
+.sd-mono {
+  font-family: var(--font-mono), 'JetBrains Mono', ui-monospace, monospace;
+  font-feature-settings: "ss01","cv11";
+}
+.sd-display {
+  font-family: var(--font-display), 'Newsreader', 'Source Serif 4', Georgia, serif;
+  font-optical-sizing: auto;
+  font-variation-settings: 'opsz' 36;
+  letter-spacing: -0.012em;
+}
+.sd-eyebrow {
+  font-family: var(--font-mono), 'JetBrains Mono', ui-monospace, monospace;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-3);
+}
+
+/* Placeholder pattern */
+.sd-ph {
+  background-image:
+    repeating-linear-gradient(45deg, rgba(60,40,20,.06) 0 1px, transparent 1px 12px),
+    linear-gradient(180deg, var(--bone-2), var(--bone-3));
+  color: var(--ink-3);
+  font-family: var(--font-mono), 'JetBrains Mono', ui-monospace, monospace;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  border-radius: var(--r-sm);
+}
+
+/* ─── Buttons ───────────────────────────────────────── */
+.sd-btn {
+  appearance: none; border: none; cursor: pointer;
+  font-family: inherit; font-weight: 600; font-size: 14px;
+  padding: 12px 20px; border-radius: 999px;
+  display: inline-flex; align-items: center; justify-content: center; gap: 8px;
+  transition: transform .14s ease, box-shadow .14s ease, background .14s, color .14s;
+  white-space: nowrap;
+}
+.sd-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.sd-btn-primary {
+  background: var(--ink); color: var(--bone);
+  box-shadow: 0 2px 0 0 rgba(70,40,20,.18), var(--sh-2);
+}
+.sd-btn-primary:hover:not(:disabled) { transform: translateY(-1px); background: var(--ink-2); }
+.sd-btn-ghost {
+  background: transparent; color: var(--ink);
+  border: 1.5px solid var(--ink);
+}
+.sd-btn-ghost:hover:not(:disabled) { background: var(--ink); color: var(--bone); }
+.sd-btn-soft {
+  background: var(--paper); color: var(--ink);
+  border: 1px solid var(--bone-3);
+  box-shadow: var(--sh-1);
+}
+.sd-btn-soft:hover:not(:disabled) { background: var(--bone-2); }
+
+/* ─── Chip / pill ───────────────────────────────────── */
+.sd-chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 999px;
+  font-size: 12px; font-weight: 600;
+  background: var(--paper); color: var(--ink-2);
+  border: 1px solid var(--bone-3);
+  cursor: pointer;
+  transition: background .14s, color .14s, border-color .14s;
+}
+.sd-chip:hover { background: var(--bone-2); }
+.sd-chip[data-active="true"] { background: var(--ink); color: var(--bone); border-color: var(--ink); }
+
+/* ─── Pulse (active step in analyzing status list) ──── */
+@keyframes sd-pulse {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%      { opacity: 0.55; transform: scale(0.85); }
+}
+
+/* ─── Holo shimmer (Legendary) ──────────────────────── */
+@keyframes sd-holo {
+  0% { background-position: 0% 50%; }
+  100% { background-position: 200% 50%; }
+}
+
+/* ─── Gold halo pulse (Legendary card outer glow) ──── */
+@keyframes sd-legend-pulse {
+  0%, 100% {
+    box-shadow:
+      0 0 0 1px oklch(0.85 0.14 80 / .55),
+      0 0 14px 1px oklch(0.85 0.18 80 / .45),
+      0 0 28px 4px oklch(0.82 0.20 70 / .25),
+      var(--sh-card);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px oklch(0.88 0.16 80 / .75),
+      0 0 24px 4px oklch(0.85 0.20 80 / .65),
+      0 0 50px 10px oklch(0.82 0.22 65 / .45),
+      var(--sh-card);
   }
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+/* Card reveal entry animation */
+@keyframes sd-reveal {
+  0%   { opacity: 0; transform: scale(0.6) rotateY(-25deg); }
+  100% { opacity: 1; transform: scale(1) rotateY(0deg); }
+}
+.sd-card-reveal { animation: sd-reveal 600ms cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+/* Interactive landing-page card deck */
+@keyframes sd-deck-lift {
+  0%   { margin-top: 10px; }
+  55%  { margin-top: -10px; }
+  100% { margin-top: 0; }
+}
+.sd-deck-card-front { animation: sd-deck-lift 360ms cubic-bezier(.2,.8,.2,1); }
+.sd-deck-card:focus-visible {
+  outline: 3px solid var(--forest);
+  outline-offset: 8px;
+  border-radius: 18px;
+}
+.sd-deck-sprinkles {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  pointer-events: none;
+  overflow: visible;
+}
+.sd-deck-sprinkle {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.75);
+  opacity: 0;
+  animation: sd-deck-sprinkle-pop 620ms cubic-bezier(.15,.75,.25,1) var(--sprinkle-delay) forwards;
+}
+.sd-deck-sprinkle:nth-child(even) {
+  width: 7px;
+  height: 14px;
+  border-radius: 3px;
+}
+@keyframes sd-deck-sprinkle-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(.35) rotate(0deg);
+  }
+  22% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform:
+      translate(
+        calc(-50% + var(--sprinkle-x)),
+        calc(-50% + var(--sprinkle-y))
+      )
+      scale(1)
+      rotate(150deg);
+  }
+}
+
+/* Scan line for analyzing */
+@keyframes sd-scan {
+  0%   { top: 10%; }
+  50%  { top: 70%; }
+  100% { top: 10%; }
+}
+.sd-scan { animation: sd-scan 2.4s ease-in-out infinite; }
+
+/* Skeleton shimmer */
+@keyframes sd-shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.sd-skeleton {
+  background: linear-gradient(90deg, var(--bone-2) 25%, var(--bone) 50%, var(--bone-2) 75%);
+  background-size: 200% 100%;
+  animation: sd-shimmer 1.4s linear infinite;
+}
+
+/* Deckled / torn-paper rule */
+.sd-rule {
+  height: 1px; border: 0; margin: 0;
+  background-image: linear-gradient(90deg, transparent, var(--bone-3) 12%, var(--bone-3) 88%, transparent);
 }

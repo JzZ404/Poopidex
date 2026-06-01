@@ -28,3 +28,18 @@ yarn-error.log*
 
 # typescript
 next-env.d.ts
+
+# ML datasets & models — non-commercial license, do not commit
+feces_yolo/
+feces_yolo_data/
+scripts/models/
+scripts/_hf_space/
+*.pt
+*.weights
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+
