@@ -2,10 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useState } from "react";
 import Logo from "./Logo";
-import { SPECIES_LIST } from "@/lib/types";
-import { getCollection } from "@/lib/collection";
 
 const navItems = [
   { href: "/", label: "Home", match: (p: string) => p === "/" },
@@ -16,19 +13,6 @@ const navItems = [
 
 export default function TopNav() {
   const pathname = usePathname();
-  const [count, setCount] = useState(0);
-  const total = SPECIES_LIST.length;
-
-  useEffect(() => {
-    const sync = () => setCount(getCollection().length);
-    sync();
-    window.addEventListener("storage", sync);
-    window.addEventListener("poopidex:collection-updated", sync);
-    return () => {
-      window.removeEventListener("storage", sync);
-      window.removeEventListener("poopidex:collection-updated", sync);
-    };
-  }, []);
 
   return (
     <nav
@@ -86,18 +70,6 @@ export default function TopNav() {
         })}
       </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-        <div
-          className="sd-mono"
-          style={{
-            fontSize: 11,
-            color: "var(--ink-3)",
-            padding: "6px 10px",
-            background: "var(--bone-2)",
-            borderRadius: 999,
-          }}
-        >
-          {count} / {total}
-        </div>
         <div
           style={{
             width: 32,

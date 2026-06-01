@@ -194,47 +194,71 @@ button { font-family: inherit; }
   pointer-events: none;
   overflow: visible;
 }
+/* Sprinkles fly OUTWARD from points around the card's perimeter.
+   Each sprinkle's starting position is set via inline `top/left/right/bottom`
+   in the React component, and `--sprinkle-x` / `--sprinkle-y` are the
+   outward displacement to translate by during the animation. */
 .sd-deck-sprinkle {
   position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 9px;
-  height: 9px;
+  width: 7px;
+  height: 7px;
   border-radius: 999px;
   box-shadow: 0 0 0 2px rgba(255,255,255,.75);
   opacity: 0;
-  animation: sd-deck-sprinkle-pop 620ms cubic-bezier(.15,.75,.25,1) var(--sprinkle-delay) forwards;
+  animation: sd-deck-sprinkle-pop 800ms cubic-bezier(.15,.75,.25,1) var(--sprinkle-delay) forwards;
 }
 .sd-deck-sprinkle:nth-child(even) {
-  width: 7px;
-  height: 14px;
-  border-radius: 3px;
+  width: 5px;
+  height: 11px;
+  border-radius: 2px;
+}
+.sd-deck-sprinkle:nth-child(3n) {
+  width: 9px;
+  height: 9px;
 }
 @keyframes sd-deck-sprinkle-pop {
   0% {
     opacity: 0;
-    transform: translate(-50%, -50%) scale(.35) rotate(0deg);
+    transform: translate(0, 0) scale(.4) rotate(0deg);
   }
   22% { opacity: 1; }
   100% {
     opacity: 0;
-    transform:
-      translate(
-        calc(-50% + var(--sprinkle-x)),
-        calc(-50% + var(--sprinkle-y))
-      )
-      scale(1)
-      rotate(150deg);
+    transform: translate(var(--sprinkle-x), var(--sprinkle-y)) scale(1) rotate(180deg);
   }
 }
 
-/* Scan line for analyzing */
+/* Scan lines / detection markers for the analyzing preview */
 @keyframes sd-scan {
-  0%   { top: 10%; }
-  50%  { top: 70%; }
-  100% { top: 10%; }
+  0%   { top: 8%; }
+  50%  { top: 88%; }
+  100% { top: 8%; }
 }
 .sd-scan { animation: sd-scan 2.4s ease-in-out infinite; }
+
+@keyframes sd-scan-vertical {
+  0%   { left: 10%; }
+  50%  { left: 88%; }
+  100% { left: 10%; }
+}
+.sd-scan-vertical { animation: sd-scan-vertical 3.6s ease-in-out infinite; }
+
+@keyframes sd-detect-pulse {
+  0%, 100% { opacity: 0; transform: scale(0.4); }
+  20%, 60% { opacity: 1; transform: scale(1); }
+  80%      { opacity: 0; transform: scale(1.4); }
+}
+
+@keyframes sd-corner-pulse {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 1; }
+}
+
+@keyframes sd-blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+.sd-blink { animation: sd-blink 1s steps(1) infinite; }
 
 /* Skeleton shimmer */
 @keyframes sd-shimmer {

@@ -140,9 +140,14 @@ export default function IdentifyPage() {
             >
               What did you find out there?
             </h1>
-            <p style={{ margin: "8px 0 0", fontSize: 15, color: "var(--ink-2)", maxWidth: 580 }}>
-              Drop a photo of fresh scat. Phone shot is fine — our model handles dim light, motion
-              blur, and unfortunate angles.
+            <p
+              style={{
+                margin: "8px 0 0",
+                fontSize: 15,
+                color: "var(--ink-2)",
+              }}
+            >
+              Drop a photo of fresh scat. Phone shot is fine — our model handles dim light, motion blur, and unfortunate angles.
             </p>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 32 }}>
@@ -196,7 +201,7 @@ export default function IdentifyPage() {
             </h1>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 32 }}>
-            <AnalyzingPreview src={preview} />
+            <AnalyzingPreview src={preview} currentStep={analyzeStep} />
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <SkeletonCard />
               <StatusList currentStep={analyzeStep} />
@@ -266,7 +271,7 @@ function DropZone({
           display: "flex",
           flexDirection: "column",
           gap: 14,
-          minHeight: 460,
+          height: "100%",
         }}
       >
         <div
@@ -276,7 +281,7 @@ function DropZone({
             borderRadius: 14,
             overflow: "hidden",
             background: "var(--bone-2)",
-            minHeight: 340,
+            minHeight: 0,
           }}
         >
           {/* eslint-disable-next-line @next/next/no-img-element */}
@@ -343,7 +348,7 @@ function DropZone({
         alignItems: "center",
         justifyContent: "center",
         textAlign: "center",
-        minHeight: 460,
+        height: "100%",
         position: "relative",
         gap: 16,
         cursor: "pointer",
@@ -536,22 +541,6 @@ function HintsPanel({
         </HintSection>
       </div>
 
-      <div
-        style={{
-          padding: "12px 14px",
-          borderRadius: 12,
-          background: "oklch(0.95 0.04 145)",
-          border: "1px solid oklch(0.78 0.10 145)",
-          display: "flex",
-          gap: 10,
-          alignItems: "flex-start",
-        }}
-      >
-        <div style={{ fontSize: 16 }}>💡</div>
-        <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
-          Even one hint helps a lot. <b>Size alone</b> usually settles bear vs. raccoon vs. deer.
-        </div>
-      </div>
     </div>
   );
 }
@@ -634,7 +623,37 @@ function Chip({
 
 /* ───────────────────────── Analyzing state ───────────────────────── */
 
-function AnalyzingPreview({ src }: { src: string | null }) {
+/* Detection points scattered across the image — each pulses on/off at a
+   staggered delay so it feels like the model is locking onto features.
+   Positions are roughly distributed (a few centered, some at corners). */
+const DETECTION_DOTS = [
+  { top: "28%", left: "22%", delay: 0,    color: "var(--ok)" },
+  { top: "42%", left: "58%", delay: 350,  color: "var(--info)" },
+  { top: "65%", left: "30%", delay: 700,  color: "var(--ok)" },
+  { top: "20%", left: "75%", delay: 1050, color: "var(--info)" },
+  { top: "78%", left: "70%", delay: 1400, color: "var(--ok)" },
+  { top: "50%", left: "45%", delay: 1750, color: "var(--warn)" },
+  { top: "35%", left: "82%", delay: 2100, color: "var(--ok)" },
+  { top: "70%", left: "15%", delay: 2450, color: "var(--info)" },
+];
+
+const SCAN_LABELS = [
+  "▸ Reading the frame",
+  "▸ Locking onto contour",
+  "▸ Comparing morphology",
+  "▸ Narrowing candidates",
+  "▸ Finalizing",
+];
+
+function AnalyzingPreview({
+  src,
+  currentStep = 0,
+}: {
+  src: string | null;
+  currentStep?: number;
+}) {
+  const label = SCAN_LABELS[Math.min(Math.max(currentStep - 1, 0), SCAN_LABELS.length - 1)];
+
   return (
     <div
       style={{
@@ -673,6 +692,19 @@ function AnalyzingPreview({ src }: { src: string | null }) {
           user photo · trail bed · fresh sample
         </div>
       )}
+
+      {/* Dim overlay so scan elements pop */}
+      <div
+        style={{
+          position: "absolute",
+          inset: 0,
+          background:
+            "linear-gradient(180deg, rgba(0,0,0,.18) 0%, rgba(0,0,0,.05) 40%, rgba(0,0,0,.05) 60%, rgba(0,0,0,.22) 100%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Horizontal scan beam — green, sweeps top to bottom */}
       <div
         className="sd-scan"
         style={{
@@ -682,8 +714,52 @@ function AnalyzingPreview({ src }: { src: string | null }) {
           height: 2,
           background: "linear-gradient(90deg, transparent, var(--ok), transparent)",
           boxShadow: "0 0 18px var(--ok)",
+          pointerEvents: "none",
         }}
       />
+
+      {/* Vertical scan beam — blue, sweeps left to right at a different rhythm */}
+      <div
+        className="sd-scan-vertical"
+        style={{
+          position: "absolute",
+          top: 0,
+          bottom: 0,
+          width: 2,
+          background: "linear-gradient(180deg, transparent, var(--info), transparent)",
+          boxShadow: "0 0 14px var(--info)",
+          pointerEvents: "none",
+          opacity: 0.7,
+        }}
+      />
+
+      {/* Detection dots — pulse on and off at staggered delays */}
+      {DETECTION_DOTS.map((dot, i) => (
+        <span
+          key={i}
+          className="sd-detect-dot"
+          style={
+            {
+              position: "absolute",
+              top: dot.top,
+              left: dot.left,
+              width: 10,
+              height: 10,
+              marginTop: -5,
+              marginLeft: -5,
+              borderRadius: "50%",
+              background: dot.color,
+              boxShadow: `0 0 10px ${dot.color}, 0 0 0 2px rgba(255,255,255,.4)`,
+              opacity: 0,
+              animation: "sd-detect-pulse 2.6s ease-in-out infinite",
+              animationDelay: `${dot.delay}ms`,
+              pointerEvents: "none",
+            } as React.CSSProperties
+          }
+        />
+      ))}
+
+      {/* Corner brackets — pulse subtly with the scan */}
       {[
         { t: 12, l: 12, bt: 1, bl: 1 },
         { t: 12, r: 12, bt: 1, br: 1 },
@@ -704,40 +780,33 @@ function AnalyzingPreview({ src }: { src: string | null }) {
             borderBottom: p.bb ? "2px solid var(--ok)" : "none",
             borderLeft: p.bl ? "2px solid var(--ok)" : "none",
             borderRight: p.br ? "2px solid var(--ok)" : "none",
+            animation: "sd-corner-pulse 1.6s ease-in-out infinite",
+            animationDelay: `${i * 200}ms`,
+            pointerEvents: "none",
           }}
         />
       ))}
+
+      {/* Top-left scan status (live — tied to current pipeline step) */}
       <div
         style={{
           position: "absolute",
-          bottom: 16,
-          left: 16,
-          right: 16,
+          top: 14,
+          left: 14,
+          padding: "6px 10px",
           background: "rgba(0,0,0,.55)",
           backdropFilter: "blur(8px)",
-          borderRadius: 10,
-          padding: "10px 14px",
+          borderRadius: 6,
           color: "white",
           fontFamily: "var(--font-mono)",
-          fontSize: 11,
-          letterSpacing: ".06em",
+          fontSize: 10.5,
+          letterSpacing: ".08em",
+          textTransform: "uppercase",
+          transition: "background .2s ease",
         }}
       >
-        <div style={{ display: "flex", justifyContent: "space-between" }}>
-          <span>▸ EXTRACTING TEXTURE FEATURES</span>
-          <span style={{ color: "oklch(0.85 0.10 145)" }}>74%</span>
-        </div>
-        <div
-          style={{
-            height: 3,
-            background: "rgba(255,255,255,.2)",
-            marginTop: 8,
-            borderRadius: 2,
-            overflow: "hidden",
-          }}
-        >
-          <div style={{ width: "74%", height: "100%", background: "var(--ok)" }} />
-        </div>
+        {label}
+        <span className="sd-blink" style={{ marginLeft: 4 }}>_</span>
       </div>
     </div>
   );
@@ -952,19 +1021,12 @@ function RevealView({
   const usedFallback = result?.source === "mock";
   const noMatch = usedFallback && result?.errorReason === "no_match";
 
-  const sourceBadge: Record<string, { label: string; color: string }> = {
-    yolo: { label: "YOLO · AnimalClue", color: "var(--forest)" },
-    claude: { label: "Claude Vision", color: "var(--clay)" },
-    claude_fallback: { label: "Claude (YOLO was unsure)", color: "var(--clay)" },
-    mock: { label: "sample card", color: "var(--ink-3)" },
-  };
   const rarityColor: Record<ScatCardData["rarity"], string> = {
     Common: "var(--r-common)",
     Uncommon: "var(--r-uncommon)",
     Rare: "var(--r-rare)",
     Legendary: "var(--r-legendary)",
   };
-  const badge = result ? sourceBadge[result.source] : null;
   return (
     <div style={{ position: "relative" }}>
       <div
@@ -1004,10 +1066,9 @@ function RevealView({
                 <span style={{ color: "var(--warn)" }}>⚠ model offline</span> · showing a sample
                 card
               </>
-            ) : badge && confPct ? (
+            ) : confPct ? (
               <>
-                Model confidence: <b style={{ color: "var(--ink)" }}>{confPct}%</b> ·{" "}
-                <span style={{ color: badge.color, fontWeight: 600 }}>{badge.label}</span>
+                Model confidence: <b style={{ color: "var(--ink)" }}>{confPct}%</b>
               </>
             ) : (
               <>Identification complete</>

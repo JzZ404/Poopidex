@@ -312,9 +312,13 @@ interface ScatCardProps {
   size?: "lg" | "sm";
   className?: string;
   style?: React.CSSProperties;
+  /* Suppress the box-shadow + Legendary gold-halo animation. Used in tight
+     layouts like the home page Recent Finds row where the glow competes
+     with the section background. */
+  noGlow?: boolean;
 }
 
-export default function ScatCard({ card, size = "lg", className, style }: ScatCardProps) {
+export default function ScatCard({ card, size = "lg", className, style, noGlow = false }: ScatCardProps) {
   const r = RARITY[card.rarity];
   const big = size === "lg";
   const isLegend = card.rarity === "Legendary";
@@ -340,14 +344,16 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
         borderRadius: big ? 18 : 14,
         padding: big ? 3 : 2,
         background: `linear-gradient(160deg, ${r.color} 0%, oklch(from ${r.color} calc(l + 0.08) c h) 100%)`,
-        boxShadow: isLegend
+        boxShadow: noGlow
+          ? "none"
+          : isLegend
           ? legendaryHalo
           : big
           ? `0 8px 24px -10px ${r.color}, var(--sh-card)`
           : "var(--sh-2)",
         position: "relative",
         fontFamily: "var(--font-ui)",
-        animation: isLegend && big ? "sd-legend-pulse 2.4s ease-in-out infinite" : undefined,
+        animation: !noGlow && isLegend && big ? "sd-legend-pulse 2.4s ease-in-out infinite" : undefined,
         ...style,
       }}
     >

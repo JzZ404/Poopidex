@@ -1,8 +1,8 @@
 import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Logo from "@/components/ui/Logo";
-import ScatCard from "@/components/cards/ScatCard";
 import HeroCardDeck from "@/components/cards/HeroCardDeck";
+import RecentFinds from "@/components/cards/RecentFinds";
 import { ScatCard as ScatCardData } from "@/lib/types";
 
 const heroCards: ScatCardData[] = [
@@ -100,37 +100,6 @@ const recentFinds: ScatCardData[] = [
     coords: "38.5333° N, 78.3500° W",
     serial: "029 / 200",
   },
-];
-
-const features = [
-  {
-    icon: "🔍",
-    title: "Identify",
-    body: "Drop a photo. Our model returns a species ID, freshness window, and confidence score in seconds.",
-    link: "Try it →",
-    href: "/identify",
-  },
-  {
-    icon: "🗂",
-    title: "My Collection",
-    body: "Every find earns a collectible card. Hunt rarities, complete sets, brag responsibly.",
-    link: "Open your Dex →",
-    href: "/collection",
-  },
-  {
-    icon: "🌲",
-    title: "Conservation",
-    body: "Flagged sightings auto-route to research partners. Your trail walks become data.",
-    link: "How it works →",
-    href: "/conservation",
-  },
-];
-
-const stats = [
-  { n: "12,847", l: "species identified" },
-  { n: "3,210", l: "active explorers" },
-  { n: "418", l: "conservation reports" },
-  { n: "94.2%", l: "model accuracy" },
 ];
 
 export default function Home() {
@@ -242,78 +211,14 @@ export default function Home() {
         </Container>
       </section>
 
-      {/* Feature cards */}
-      <section style={{ padding: "80px 0", background: "var(--bone)" }}>
-        <Container>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 20 }}>
-            {features.map((f) => (
-              <Link
-                key={f.title}
-                href={f.href}
-                style={{
-                  padding: 28,
-                  background: "var(--paper)",
-                  borderRadius: 18,
-                  border: "1px solid var(--bone-3)",
-                  boxShadow: "var(--sh-1)",
-                  display: "flex",
-                  flexDirection: "column",
-                  gap: 14,
-                  minHeight: 220,
-                  textDecoration: "none",
-                  color: "inherit",
-                  transition: "transform .14s, box-shadow .14s",
-                }}
-                className="hover:[box-shadow:var(--sh-2)]"
-              >
-                <div
-                  style={{
-                    width: 44,
-                    height: 44,
-                    borderRadius: 12,
-                    background: "var(--bone-2)",
-                    border: "1px solid var(--bone-3)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: 22,
-                  }}
-                >
-                  {f.icon}
-                </div>
-                <h3
-                  className="sd-display"
-                  style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}
-                >
-                  {f.title}
-                </h3>
-                <p
-                  style={{
-                    margin: 0,
-                    fontSize: 14,
-                    lineHeight: 1.55,
-                    color: "var(--ink-2)",
-                    flex: 1,
-                  }}
-                >
-                  {f.body}
-                </p>
-                <span style={{ color: "var(--forest)", fontWeight: 600, fontSize: 13.5 }}>
-                  {f.link}
-                </span>
-              </Link>
-            ))}
-          </div>
-        </Container>
-      </section>
-
-      {/* Recent finds */}
+{/* Recent finds */}
       <section
         style={{
           padding: "40px 0 80px",
-          background: "var(--bone-2)",
+          background: "var(--paper)",
           borderTop: "1px solid var(--bone-3)",
           borderBottom: "1px solid var(--bone-3)",
+          position: "relative",
         }}
       >
         <Container>
@@ -348,48 +253,8 @@ export default function Home() {
               View all →
             </Link>
           </div>
-          <div style={{ display: "flex", gap: 18, overflowX: "auto", paddingBottom: 8 }}>
-            {recentFinds.map((card, i) => (
-              <div key={i} style={{ flex: "0 0 auto" }}>
-                <ScatCard card={card} size="sm" />
-              </div>
-            ))}
-          </div>
-        </Container>
-      </section>
+          <RecentFinds fallback={recentFinds} />
 
-      {/* Stats strip */}
-      <section style={{ padding: "60px 0", background: "var(--bone)" }}>
-        <Container>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 20 }}>
-            {stats.map((s) => (
-              <div key={s.l} style={{ borderLeft: "2px solid var(--forest)", paddingLeft: 16 }}>
-                <div
-                  className="sd-display"
-                  style={{
-                    fontSize: 40,
-                    fontWeight: 700,
-                    lineHeight: 1,
-                    letterSpacing: "-0.03em",
-                  }}
-                >
-                  {s.n}
-                </div>
-                <div
-                  className="sd-mono"
-                  style={{
-                    marginTop: 6,
-                    fontSize: 11,
-                    textTransform: "uppercase",
-                    letterSpacing: ".1em",
-                    color: "var(--ink-3)",
-                  }}
-                >
-                  {s.l}
-                </div>
-              </div>
-            ))}
-          </div>
         </Container>
       </section>
 

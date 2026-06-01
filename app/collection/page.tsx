@@ -8,7 +8,7 @@ import {
   CollectionEntry, Rarity, SPECIES_LIST, Element, ScatCard as ScatCardData,
   ELEMENT_LABELS, ELEMENT_COLORS, findSpec,
 } from "@/lib/types";
-import { getCollection } from "@/lib/collection";
+import { getCollection, removeFromCollection } from "@/lib/collection";
 
 /* Sample cards — one per rarity + one per element. Uses real SPECIES_LIST
    entries so the cards reflect actual art / element / rarity assignments.
@@ -54,7 +54,7 @@ const RARITY_GLYPHS: Record<Rarity, { glyph: string; color: string }> = {
 
 const ALL_ELEMENTS: Element[] = ["Forest", "Mountain", "Desert", "Water", "Plains", "Urban", "Shadow"];
 
-const TOTAL_TARGET = 200;
+const TOTAL_TARGET = 20; // total species in the Poopidex
 
 type RarityFilter = "All" | Rarity;
 type ElementFilter = "All" | Element;
@@ -63,61 +63,115 @@ export default function CollectionPage() {
   const [entries, setEntries] = useState<CollectionEntry[]>([]);
   const [filter, setFilter] = useState<RarityFilter>("All");
   const [elementFilter, setElementFilter] = useState<ElementFilter>("All");
+  // Sort mode — recent (newest first) vs rarity (legendary first)
+  const [sortMode, setSortMode] = useState<"recent" | "rarity">("recent");
+  // Multi-select / discard
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+
+  function toggleSelect(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function discardSelected() {
+    if (selectedIds.size === 0) return;
+    const n = selectedIds.size;
+    const ok = window.confirm(
+      `Discard ${n} card${n > 1 ? "s" : ""} from your collection? This cannot be undone.`
+    );
+    if (!ok) return;
+    for (const id of selectedIds) {
+      removeFromCollection(id);
+    }
+    exitSelectMode();
+  }
+
+  function selectAllVisible(ids: string[]) {
+    setSelectedIds(new Set(ids));
+  }
 
   useEffect(() => {
     const sync = () => setEntries(getCollection());
     sync();
+    // Re-sync on:
+    //  - storage event (changes from other tabs)
+    //  - custom collection-updated event (changes from this tab via addToCollection)
+    //  - focus event (user comes back to the tab — catches edge cases)
     window.addEventListener("storage", sync);
     window.addEventListener("poopidex:collection-updated", sync);
+    window.addEventListener("focus", sync);
     return () => {
       window.removeEventListener("storage", sync);
       window.removeEventListener("poopidex:collection-updated", sync);
+      window.removeEventListener("focus", sync);
     };
   }, []);
 
-  // Specs for both the user's real entries and the preview cards — used
-  // for filter counts so chips show non-zero numbers even when the user
-  // hasn't collected anything yet.
-  const allSpecs = useMemo(() => {
-    const fromEntries = entries
+  // Filter counts now reflect the user's ACTUAL collection only — no longer
+  // mixed with PREVIEW_SPECIES (that was misleading, made it look like the
+  // demo cards counted toward your dex).
+  const entrySpecs = useMemo(() => {
+    return entries
       .map((e) => findSpec(e.card.species))
       .filter((s): s is NonNullable<typeof s> => !!s);
-    const fromPreview = PREVIEW_SPECIES
-      .map((s) => findSpec(s))
-      .filter((s): s is NonNullable<typeof s> => !!s);
-    return [...fromEntries, ...fromPreview];
   }, [entries]);
 
   const counts = useMemo(() => {
     const c: Record<RarityFilter, number> = {
-      All: allSpecs.length,
+      All: entrySpecs.length,
       Common: 0,
       Uncommon: 0,
       Rare: 0,
       Legendary: 0,
     };
-    for (const s of allSpecs) c[s.rarity]++;
+    for (const s of entrySpecs) c[s.rarity]++;
     return c;
-  }, [allSpecs]);
+  }, [entrySpecs]);
 
   const elementCounts = useMemo(() => {
     const c: Record<ElementFilter, number> = {
-      All: allSpecs.length, Forest: 0, Mountain: 0, Desert: 0, Water: 0,
+      All: entrySpecs.length, Forest: 0, Mountain: 0, Desert: 0, Water: 0,
       Plains: 0, Urban: 0, Shadow: 0,
     };
-    for (const s of allSpecs) c[s.element]++;
+    for (const s of entrySpecs) c[s.element]++;
     return c;
-  }, [allSpecs]);
+  }, [entrySpecs]);
 
   const filtered = useMemo(() => {
-    return entries.filter((e) => {
+    const list = entries.filter((e) => {
       const passRarity = filter === "All" || e.card.rarity === filter;
       if (!passRarity) return false;
       if (elementFilter === "All") return true;
       const spec = findSpec(e.card.species);
       return spec?.element === elementFilter;
     });
-  }, [entries, filter, elementFilter]);
+    // Sort the filtered list
+    if (sortMode === "rarity") {
+      const rarityOrder: Record<Rarity, number> = {
+        Legendary: 0,
+        Rare: 1,
+        Uncommon: 2,
+        Common: 3,
+      };
+      return [...list].sort(
+        (a, b) => rarityOrder[a.card.rarity] - rarityOrder[b.card.rarity]
+      );
+    }
+    // Default: recent first (by collectedAt desc)
+    return [...list].sort((a, b) =>
+      b.collectedAt > a.collectedAt ? 1 : -1
+    );
+  }, [entries, filter, elementFilter, sortMode]);
 
   const discovered = new Set(entries.map((e) => e.card.species));
   const speciesDiscoveredCount = discovered.size;
@@ -295,36 +349,53 @@ export default function CollectionPage() {
             ))}
           </div>
 
-          {/* Search + sort row */}
+          {/* Action row — sort + select/discard toggle */}
           <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
-            <div
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: 8,
-                padding: "8px 12px",
-                background: "var(--bone-2)",
-                borderRadius: 999,
-                fontSize: 13,
-                color: "var(--ink-3)",
-                flex: 1,
-                minWidth: 220,
-              }}
-            >
-              🔍 <span>Search species, location…</span>
-            </div>
-            <div
+            <button
+              onClick={() =>
+                setSortMode((s) => (s === "recent" ? "rarity" : "recent"))
+              }
               className="sd-chip"
               style={{ background: "var(--bone)", border: "1px solid var(--bone-3)" }}
+              title="Click to toggle sort order"
             >
-              Sort: <b style={{ color: "var(--ink)", marginLeft: 4 }}>Rarity ↓</b>
-            </div>
+              Sort:{" "}
+              <b style={{ color: "var(--ink)", marginLeft: 4 }}>
+                {sortMode === "recent" ? "Recent ↓" : "Rarity ↓"}
+              </b>
+            </button>
+            <div style={{ flex: 1 }} />
+            {entries.length > 0 && (
+              <>
+                {selectMode && filtered.length > 0 && (
+                  <button
+                    onClick={() => selectAllVisible(filtered.map((e) => e.id))}
+                    className="sd-chip"
+                    style={{ border: "1px solid var(--bone-3)" }}
+                  >
+                    Select all visible ({filtered.length})
+                  </button>
+                )}
+                <button
+                  onClick={() => (selectMode ? exitSelectMode() : setSelectMode(true))}
+                  className="sd-chip"
+                  data-active={selectMode}
+                  style={{
+                    border: `1px solid ${selectMode ? "var(--danger)" : "var(--bone-3)"}`,
+                    color: selectMode ? "var(--danger)" : "var(--ink-2)",
+                    fontWeight: 600,
+                  }}
+                >
+                  {selectMode ? "✕ Cancel" : "☑ Select"}
+                </button>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Style preview — one sample per rarity & element.
-            Only shown when the user has no actual finds yet, so it doesn't
-            visually compete with their real collection. Respects active filters. */}
+        {/* DEMO row — preview cards. ONLY shown when the user has zero finds.
+            Heavily labeled so it can't be confused with the real collection.
+            Demo cards are at 60% opacity to visually de-emphasize them. */}
         {entries.length === 0 && (() => {
           const previewCards = PREVIEW_SPECIES
             .map((s) => ({ s, card: buildPreviewCard(s), spec: findSpec(s) }))
@@ -338,16 +409,17 @@ export default function CollectionPage() {
           return (
             <div style={{ marginBottom: 32 }}>
               <div
-                className="sd-mono"
                 style={{
-                  fontSize: 10,
-                  letterSpacing: ".14em",
-                  textTransform: "uppercase",
-                  color: "var(--ink-3)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
                   marginBottom: 10,
                 }}
               >
-                Style preview · one per rarity & element
+                <div className="sd-mono" style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-3)" }}>
+                  <span style={{ color: "var(--warn)", fontWeight: 700 }}>⚠ Demo Cards</span>
+                  <span> · these are samples, not your collection. Identify a photo to start collecting.</span>
+                </div>
               </div>
               <div
                 style={{
@@ -355,9 +427,10 @@ export default function CollectionPage() {
                   gridTemplateColumns: "repeat(4, 1fr)",
                   gap: 20,
                   padding: 18,
-                  background: "var(--bone-2)",
-                  border: "1px dashed var(--bone-3)",
+                  background: "repeating-linear-gradient(45deg, var(--bone-2) 0 12px, var(--bone) 12px 24px)",
+                  border: "2px dashed var(--warn)",
                   borderRadius: 14,
+                  opacity: 0.6,
                 }}
               >
                 {previewCards.map(({ s, card }) => (
@@ -397,19 +470,125 @@ export default function CollectionPage() {
           <div
             style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 20 }}
           >
-            {filtered.map((e) => (
-              <div
-                key={e.id}
-                style={{ display: "flex", justifyContent: "center" }}
-              >
-                <ScatCard card={e.card} size="sm" />
-              </div>
-            ))}
-            {Array.from({ length: lockedSlots }).map((_, i) => (
-              <div key={`l${i}`} style={{ display: "flex", justifyContent: "center" }}>
-                <LockedCard />
-              </div>
-            ))}
+            {filtered.map((e) => {
+              const isSelected = selectedIds.has(e.id);
+              return (
+                <div
+                  key={e.id}
+                  onClick={selectMode ? () => toggleSelect(e.id) : undefined}
+                  style={{
+                    display: "flex",
+                    justifyContent: "center",
+                    position: "relative",
+                    cursor: selectMode ? "pointer" : "default",
+                    transition: "transform .14s ease",
+                    transform: selectMode && isSelected ? "scale(0.94)" : "scale(1)",
+                  }}
+                >
+                  <div
+                    style={{
+                      position: "relative",
+                      filter:
+                        selectMode && !isSelected
+                          ? "grayscale(.5) opacity(.6)"
+                          : "none",
+                      transition: "filter .14s ease",
+                    }}
+                  >
+                    <ScatCard card={e.card} size="sm" />
+                  </div>
+                  {selectMode && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        top: 8,
+                        right: 8,
+                        width: 28,
+                        height: 28,
+                        borderRadius: 999,
+                        background: isSelected ? "var(--danger)" : "var(--paper)",
+                        border: `2px solid ${
+                          isSelected ? "var(--danger)" : "var(--bone-3)"
+                        }`,
+                        color: isSelected ? "white" : "var(--ink-3)",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        fontSize: 14,
+                        fontWeight: 700,
+                        boxShadow: "var(--sh-1)",
+                        pointerEvents: "none",
+                      }}
+                    >
+                      {isSelected ? "✓" : ""}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {!selectMode &&
+              Array.from({ length: lockedSlots }).map((_, i) => (
+                <div key={`l${i}`} style={{ display: "flex", justifyContent: "center" }}>
+                  <LockedCard />
+                </div>
+              ))}
+          </div>
+        )}
+
+        {/* Floating bulk-action bar — appears when any card is selected */}
+        {selectMode && selectedIds.size > 0 && (
+          <div
+            style={{
+              position: "fixed",
+              bottom: 24,
+              left: "50%",
+              transform: "translateX(-50%)",
+              zIndex: 100,
+              padding: "12px 18px",
+              background: "var(--ink)",
+              color: "var(--bone)",
+              borderRadius: 999,
+              boxShadow: "var(--sh-3)",
+              display: "flex",
+              alignItems: "center",
+              gap: 16,
+              fontSize: 14,
+              fontWeight: 600,
+            }}
+          >
+            <span>
+              {selectedIds.size} card{selectedIds.size > 1 ? "s" : ""} selected
+            </span>
+            <button
+              onClick={discardSelected}
+              style={{
+                padding: "8px 16px",
+                background: "var(--danger)",
+                color: "white",
+                border: "none",
+                borderRadius: 999,
+                fontWeight: 700,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              🗑 Discard
+            </button>
+            <button
+              onClick={exitSelectMode}
+              style={{
+                padding: "8px 14px",
+                background: "transparent",
+                color: "var(--bone)",
+                border: "1px solid rgba(255,255,255,.2)",
+                borderRadius: 999,
+                fontWeight: 600,
+                fontSize: 13,
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
           </div>
         )}
 

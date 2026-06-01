@@ -43,25 +43,22 @@ export default function ConservationPage() {
               margin: "8px 0 0",
               fontSize: 15,
               color: "var(--ink-2)",
-              maxWidth: 620,
             }}
           >
-            Every scat you log helps wildlife biologists track population, range, and health.
-            Flagged species auto-route to our research partners within 24 hours.
+            Every scat you log helps wildlife biologists track population, range, and health. Flagged species auto-route to our research partners within 24 hours.
           </p>
         </div>
 
         <SectionHeader
           emoji="🚨"
-          title="Species Alerts"
-          subtitle="Flagged species reported in your area this month"
+          title="Official Conservation Alerts"
+          subtitle="Authoritative warnings from research partners — USFWS, USGS, and conservation NGOs"
         />
         <div
           style={{
-            display: "flex",
+            display: "grid",
+            gridTemplateColumns: "repeat(4, 1fr)",
             gap: 16,
-            overflowX: "auto",
-            paddingBottom: 8,
             marginBottom: 48,
           }}
         >
@@ -164,7 +161,6 @@ function AlertCard({
   return (
     <div
       style={{
-        flex: "0 0 320px",
         padding: 18,
         background: "var(--paper)",
         border: `2px solid ${isCritical ? "var(--danger)" : "var(--warn)"}`,
@@ -265,45 +261,23 @@ function MapPanel({ entries }: { entries: CollectionEntry[] }) {
         overflow: "hidden",
         border: "1px solid var(--bone-3)",
         minHeight: 440,
-        background: "linear-gradient(160deg, oklch(0.86 0.04 145) 0%, oklch(0.78 0.06 200) 100%)",
+        background: "var(--bone-2)",
       }}
     >
-      <svg
-        width="100%"
-        height="100%"
-        style={{ position: "absolute", inset: 0 }}
-        aria-hidden="true"
-      >
-        <g fill="none" stroke="rgba(0,0,0,0.12)" strokeWidth="1">
-          <path d="M-20 80 Q200 40 420 90 T880 110" />
-          <path d="M-20 140 Q200 100 420 150 T880 170" />
-          <path d="M-20 200 Q200 160 420 210 T880 230" />
-          <path d="M-20 260 Q200 220 420 270 T880 290" />
-          <path d="M-20 320 Q200 280 420 330 T880 350" />
-          <path d="M-20 380 Q200 340 420 390 T880 410" />
-        </g>
-        <path
-          d="M40 280 Q150 220 260 280 Q340 340 250 400 Q120 420 60 360 Z"
-          fill="oklch(0.74 0.07 220)"
-          opacity="0.85"
-        />
-        <path
-          d="M460 60 Q550 40 620 70 Q700 100 650 170 Q580 200 490 170 Q440 130 460 60 Z"
-          fill="oklch(0.50 0.08 145)"
-          opacity="0.65"
-        />
-        <path
-          d="M540 280 Q640 260 720 300 Q770 360 700 400 Q620 420 550 380 Q510 340 540 280 Z"
-          fill="oklch(0.50 0.08 145)"
-          opacity="0.55"
-        />
-        <path
-          d="M0 240 Q220 230 360 260 T720 280 L880 270"
-          fill="none"
-          stroke="rgba(255,255,255,0.6)"
-          strokeWidth="2"
-        />
-      </svg>
+      {/* Real map background (Poway / Rosemont / Fernbrook area) */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src="/art/map.png"
+        alt="Map of the Poway area"
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          objectFit: "cover",
+          objectPosition: "center",
+        }}
+      />
 
       {pins.map((p, i) => (
         <MapPin key={i} x={p.x} y={p.y} rarity={p.rarity} />
@@ -562,6 +536,7 @@ function LogList({ entries }: { entries: CollectionEntry[] }) {
 }
 
 function ScienceBanner({ reportCount }: { reportCount: number }) {
+  const [showForm, setShowForm] = useState(false);
   const stats = [
     { n: String(reportCount), l: "your reports filed" },
     { n: "12", l: "partner orgs" },
@@ -641,19 +616,15 @@ function ScienceBanner({ reportCount }: { reportCount: number }) {
           <button
             className="sd-btn"
             style={{ background: "var(--bone)", color: "var(--ink)", padding: "14px 22px" }}
-            onClick={() => alert("Report submitted to partner orgs (mock)")}
+            onClick={() => setShowForm(true)}
           >
             Report My Findings →
           </button>
-          <button
-            className="sd-btn sd-btn-ghost"
-            style={{ color: "var(--bone)", borderColor: "oklch(0.78 0.05 150)" }}
-            onClick={() => alert("Data & Privacy page: coming soon")}
-          >
-            Data &amp; Privacy
-          </button>
         </div>
       </div>
+
+      {showForm && <ReportFindingsModal onClose={() => setShowForm(false)} />}
+
 
       <div
         style={{
@@ -697,3 +668,164 @@ function ScienceBanner({ reportCount }: { reportCount: number }) {
     </div>
   );
 }
+
+/* ──────────────────────────────────────────────────────────────
+   Report My Findings — modal form (overlay + close on backdrop click)
+   ────────────────────────────────────────────────────────────── */
+
+function ReportFindingsModal({ onClose }: { onClose: () => void }) {
+  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
+  const [species, setSpecies] = useState("");
+  const [location, setLocation] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
+  const [notes, setNotes] = useState("");
+  const [consent, setConsent] = useState(false);
+  const [submitted, setSubmitted] = useState(false);
+
+  const valid =
+    name.trim().length > 0 &&
+    email.trim().length > 0 &&
+    species.trim().length > 0 &&
+    location.trim().length > 0 &&
+    consent;
+
+  function handleSubmit() {
+    if (!valid) return;
+    setSubmitted(true);
+    setTimeout(onClose, 1800);
+  }
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(20, 14, 8, .55)",
+        backdropFilter: "blur(4px)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        zIndex: 1000,
+        padding: 20,
+      }}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          background: "var(--paper)",
+          borderRadius: 16,
+          padding: 28,
+          maxWidth: 540,
+          width: "100%",
+          boxShadow: "var(--sh-3)",
+          color: "var(--ink)",
+        }}
+      >
+        {submitted ? (
+          <div style={{ textAlign: "center", padding: "40px 0" }}>
+            <div style={{ fontSize: 56, marginBottom: 12 }}>✅</div>
+            <h2 className="sd-display" style={{ margin: 0, fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              Submitted
+            </h2>
+            <p style={{ marginTop: 8, color: "var(--ink-2)", fontSize: 14 }}>
+              Your finding has been logged. Thank you for contributing!
+            </p>
+          </div>
+        ) : (
+          <>
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 8 }}>
+              <div className="sd-eyebrow">REPORT MY FINDINGS</div>
+              <button
+                onClick={onClose}
+                style={{ background: "transparent", border: "none", fontSize: 22, color: "var(--ink-3)", cursor: "pointer", lineHeight: 1, padding: 4 }}
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+            <h2 className="sd-display" style={{ margin: "0 0 6px", fontSize: 26, fontWeight: 700, letterSpacing: "-0.02em" }}>
+              Share your sighting with conservation partners
+            </h2>
+            <p style={{ margin: "0 0 18px", fontSize: 13, color: "var(--ink-3)", lineHeight: 1.5 }}>
+              All fields except notes are required. Submissions route to our partner research orgs (USFWS, USGS) and are added to open species-range databases.
+            </p>
+
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              <ReportField label="Your name">
+                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Jane Doe" style={modalInputStyle} />
+              </ReportField>
+              <ReportField label="Email">
+                <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@email.com" style={modalInputStyle} />
+              </ReportField>
+              <ReportField label="Species observed">
+                <input value={species} onChange={(e) => setSpecies(e.target.value)} placeholder="e.g. Mountain Lion" style={modalInputStyle} />
+              </ReportField>
+              <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 12 }}>
+                <ReportField label="Location">
+                  <input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Mt. Tam, CA" style={modalInputStyle} />
+                </ReportField>
+                <ReportField label="Date observed">
+                  <input type="date" value={date} onChange={(e) => setDate(e.target.value)} style={modalInputStyle} />
+                </ReportField>
+              </div>
+              <ReportField label="Notes (optional)">
+                <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Scat morphology, scale reference, weather, time of day…" rows={3} style={{ ...modalInputStyle, resize: "vertical", fontFamily: "inherit" }} />
+              </ReportField>
+              <label style={{ display: "flex", alignItems: "flex-start", gap: 8, fontSize: 12.5, color: "var(--ink-2)", lineHeight: 1.5, cursor: "pointer" }}>
+                <input type="checkbox" checked={consent} onChange={(e) => setConsent(e.target.checked)} style={{ marginTop: 2 }} />
+                <span>
+                  I consent to sharing this observation with conservation research partners. Personal details remain anonymous in published datasets.
+                </span>
+              </label>
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 22 }}>
+              <button onClick={onClose} className="sd-btn sd-btn-soft" style={{ padding: "10px 18px" }}>
+                Cancel
+              </button>
+              <button onClick={handleSubmit} disabled={!valid} className="sd-btn sd-btn-primary" style={{ padding: "10px 24px" }}>
+                Submit report →
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ReportField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+      <div
+        className="sd-mono"
+        style={{ fontSize: 10, letterSpacing: ".12em", textTransform: "uppercase", color: "var(--ink-3)" }}
+      >
+        {label}
+      </div>
+      {children}
+    </div>
+  );
+}
+
+const modalInputStyle: React.CSSProperties = {
+  padding: "10px 12px",
+  background: "var(--bone)",
+  border: "1px solid var(--bone-3)",
+  borderRadius: 8,
+  fontSize: 14,
+  color: "var(--ink)",
+  outline: "none",
+  width: "100%",
+};
+
