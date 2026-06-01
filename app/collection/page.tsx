@@ -5,45 +5,10 @@ import Link from "next/link";
 import Container from "@/components/ui/Container";
 import ScatCard, { LockedCard } from "@/components/cards/ScatCard";
 import {
-  CollectionEntry, Rarity, SPECIES_LIST, Element, ScatCard as ScatCardData,
+  CollectionEntry, Rarity, SPECIES_LIST, Element,
   ELEMENT_LABELS, ELEMENT_COLORS, findSpec,
 } from "@/lib/types";
 import { getCollection, removeFromCollection } from "@/lib/collection";
-
-/* Sample cards — one per rarity + one per element. Uses real SPECIES_LIST
-   entries so the cards reflect actual art / element / rarity assignments.
-   These are display-only; they don't go into the user's collection. */
-const PREVIEW_SPECIES = [
-  "Brown Bear",          // Legendary · Forest
-  "Mountain Lion",       // Legendary · Mountain
-  "American Bison",      // Legendary · Plains
-  "Bobcat",              // Rare · Forest
-  "North American River Otter", // Rare · Water
-  "Ringtail",            // Rare · Desert
-  "North American Porcupine",   // Uncommon · Forest
-  "Coyote",              // Common · Forest
-  "Common Raccoon",      // Common · Urban
-];
-
-function buildPreviewCard(species: string): ScatCardData | null {
-  const spec = findSpec(species);
-  if (!spec) return null;
-  return {
-    species: spec.species,
-    speciesScientific: spec.speciesScientific,
-    rarity: spec.rarity,
-    freshness: "< 1 hour",
-    funFact: spec.defaultFunFact,
-    illustrationVariant: "Preview",
-    conservationFlag: spec.conservationFlag,
-    conservationNote: spec.conservationNote,
-    stats: spec.defaultStats,
-    identifiedAt: "Preview",
-    location: "Sample",
-    coords: "—",
-    serial: "PREVIEW",
-  };
-}
 
 const RARITY_GLYPHS: Record<Rarity, { glyph: string; color: string }> = {
   Common: { glyph: "●", color: "var(--r-common)" },
@@ -392,56 +357,6 @@ export default function CollectionPage() {
             )}
           </div>
         </div>
-
-        {/* DEMO row — preview cards. ONLY shown when the user has zero finds.
-            Heavily labeled so it can't be confused with the real collection.
-            Demo cards are at 60% opacity to visually de-emphasize them. */}
-        {entries.length === 0 && (() => {
-          const previewCards = PREVIEW_SPECIES
-            .map((s) => ({ s, card: buildPreviewCard(s), spec: findSpec(s) }))
-            .filter(({ card, spec }) => {
-              if (!card || !spec) return false;
-              if (filter !== "All" && card.rarity !== filter) return false;
-              if (elementFilter !== "All" && spec.element !== elementFilter) return false;
-              return true;
-            });
-          if (previewCards.length === 0) return null;
-          return (
-            <div style={{ marginBottom: 32 }}>
-              <div
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "space-between",
-                  marginBottom: 10,
-                }}
-              >
-                <div className="sd-mono" style={{ fontSize: 10, letterSpacing: ".14em", textTransform: "uppercase", color: "var(--ink-3)" }}>
-                  <span style={{ color: "var(--warn)", fontWeight: 700 }}>⚠ Demo Cards</span>
-                  <span> · these are samples, not your collection. Identify a photo to start collecting.</span>
-                </div>
-              </div>
-              <div
-                style={{
-                  display: "grid",
-                  gridTemplateColumns: "repeat(4, 1fr)",
-                  gap: 20,
-                  padding: 18,
-                  background: "repeating-linear-gradient(45deg, var(--bone-2) 0 12px, var(--bone) 12px 24px)",
-                  border: "2px dashed var(--warn)",
-                  borderRadius: 14,
-                  opacity: 0.6,
-                }}
-              >
-                {previewCards.map(({ s, card }) => (
-                  <div key={s} style={{ display: "flex", justifyContent: "center" }}>
-                    <ScatCard card={card!} size="sm" />
-                  </div>
-                ))}
-              </div>
-            </div>
-          );
-        })()}
 
         {/* Your finds — the actual user collection grid */}
         {entries.length > 0 && (
