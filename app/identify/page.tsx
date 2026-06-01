@@ -1,27 +1,63 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Container from "@/components/ui/Container";
 import ScatCard from "@/components/cards/ScatCard";
-import { addToCollection } from "@/lib/collection";
+import { addToCollection, getCollection } from "@/lib/collection";
 import { ScatCard as ScatCardData } from "@/lib/types";
-import { identifyPhoto, IdentifyResult } from "@/lib/identify";
+import { identifyPhoto, IdentifyResult, IdentifyStep } from "@/lib/identify";
+import {
+  UserHints,
+  SizeBucket,
+  ContentTag,
+  HabitatTag,
+  SIZE_LABELS,
+  CONTENT_LABELS,
+  HABITAT_LABELS,
+} from "@/lib/speciesAttributes";
 
 type Phase = "upload" | "analyzing" | "reveal";
+
+/* Maps backend step events → status-list step index (0-based).
+   Backend emits 5 events; StatusList shows 5 steps in the same order. */
+const STEP_INDEX: Record<IdentifyStep, number> = {
+  photo_received: 1,   // step 0 done → step 1 active
+  hints_filtered: 2,   // step 1 done → step 2 active
+  clip_done:      3,   // step 2 done → step 3 active
+  claude_done:    4,   // step 3 done → step 4 active
+  result:         5,   // step 4 done → all done
+};
 
 export default function IdentifyPage() {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("upload");
   const [preview, setPreview] = useState<string | null>(null);
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [hints, setHints] = useState<UserHints>({});
   const [card, setCard] = useState<ScatCardData | null>(null);
   const [identifyResult, setIdentifyResult] = useState<IdentifyResult | null>(null);
   const [dragging, setDragging] = useState(false);
   const [feedback, setFeedback] = useState<"up" | "down" | null>(null);
   const [collected, setCollected] = useState(false);
+  const [existingSpeciesCount, setExistingSpeciesCount] = useState(0);
+  // Real-time analyzing progress (driven by SSE events from /api/identify)
+  const [analyzeStep, setAnalyzeStep] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Keyboard shortcut: U opens file picker on upload screen
+  const reset = useCallback(() => {
+    setPhase("upload");
+    setPreview(null);
+    setPendingFile(null);
+    setHints({});
+    setCard(null);
+    setIdentifyResult(null);
+    setFeedback(null);
+    setCollected(false);
+    setExistingSpeciesCount(0);
+    setAnalyzeStep(0);
+  }, []);
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (phase === "upload" && e.key.toLowerCase() === "u") {
@@ -32,30 +68,37 @@ export default function IdentifyPage() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [phase]);
-
-  function reset() {
-    setPhase("upload");
-    setPreview(null);
-    setCard(null);
-    setIdentifyResult(null);
-    setFeedback(null);
-    setCollected(false);
-  }
+  }, [phase, reset]);
 
   async function handleFile(file: File) {
     const dataUrl = await readAsDataURL(file);
+    setPendingFile(file);
     setPreview(dataUrl);
-    setPhase("analyzing");
+    // Don't auto-identify — wait for user to click "Identify" so they can fill hints first
+  }
 
-    // Minimum 2s "AI is sniffing around..." theatre even if YOLO returns faster
-    const [result] = await Promise.all([
-      identifyPhoto(file, dataUrl),
-      new Promise((r) => setTimeout(r, 2000)),
-    ]);
+  // All three field-detail inputs are required before the user can identify.
+  // The Identify button is disabled until this is true.
+  const hintsComplete = Boolean(
+    hints.size && hints.habitat && hints.contents && hints.contents.length > 0
+  );
+
+  async function runIdentify() {
+    if (!pendingFile || !preview || !hintsComplete) return;
+    setPhase("analyzing");
+    setAnalyzeStep(0);
+
+    // Stream pipeline progress from the server — onStep advances the bar in
+    // real time as each backend stage completes.
+    const result = await identifyPhoto(pendingFile, preview, hints, (step) => {
+      setAnalyzeStep(STEP_INDEX[step] ?? 0);
+    });
 
     setCard(result.card);
     setIdentifyResult(result);
+    setExistingSpeciesCount(
+      getCollection().filter((entry) => entry.card.species === result.card.species).length
+    );
     setPhase("reveal");
   }
 
@@ -105,6 +148,8 @@ export default function IdentifyPage() {
           <div style={{ display: "grid", gridTemplateColumns: "1.4fr 1fr", gap: 32 }}>
             <DropZone
               dragging={dragging}
+              preview={preview}
+              hintsComplete={hintsComplete}
               onDragOver={(e) => {
                 e.preventDefault();
                 setDragging(true);
@@ -112,8 +157,13 @@ export default function IdentifyPage() {
               onDragLeave={() => setDragging(false)}
               onDrop={onDrop}
               onPickClick={() => fileInputRef.current?.click()}
+              onIdentify={runIdentify}
+              onClear={() => {
+                setPendingFile(null);
+                setPreview(null);
+              }}
             />
-            <TipsPanel />
+            <HintsPanel hints={hints} setHints={setHints} />
             <input
               ref={fileInputRef}
               type="file"
@@ -149,7 +199,7 @@ export default function IdentifyPage() {
             <AnalyzingPreview src={preview} />
             <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
               <SkeletonCard />
-              <StatusList />
+              <StatusList currentStep={analyzeStep} />
             </div>
           </div>
         </Container>
@@ -165,6 +215,7 @@ export default function IdentifyPage() {
           onCollect={onCollect}
           onAgain={reset}
           result={identifyResult}
+          existingSpeciesCount={existingSpeciesCount}
         />
       )}
     </main>
@@ -184,17 +235,98 @@ function readAsDataURL(file: File): Promise<string> {
 
 function DropZone({
   dragging,
+  preview,
+  hintsComplete,
   onDragOver,
   onDragLeave,
   onDrop,
   onPickClick,
+  onIdentify,
+  onClear,
 }: {
   dragging: boolean;
+  preview: string | null;
+  hintsComplete: boolean;
   onDragOver: React.DragEventHandler<HTMLDivElement>;
   onDragLeave: React.DragEventHandler<HTMLDivElement>;
   onDrop: React.DragEventHandler<HTMLDivElement>;
   onPickClick: () => void;
+  onIdentify: () => void;
+  onClear: () => void;
 }) {
+  // When a file is selected, show the preview + identify CTA
+  if (preview) {
+    return (
+      <div
+        style={{
+          background: "var(--paper)",
+          border: "1px solid var(--bone-3)",
+          borderRadius: 20,
+          padding: 16,
+          display: "flex",
+          flexDirection: "column",
+          gap: 14,
+          minHeight: 460,
+        }}
+      >
+        <div
+          style={{
+            position: "relative",
+            flex: 1,
+            borderRadius: 14,
+            overflow: "hidden",
+            background: "var(--bone-2)",
+            minHeight: 340,
+          }}
+        >
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={preview}
+            alt="Your photo"
+            style={{
+              width: "100%",
+              height: "100%",
+              objectFit: "cover",
+              position: "absolute",
+              inset: 0,
+            }}
+          />
+        </div>
+        <div style={{ display: "flex", gap: 10, justifyContent: "space-between", alignItems: "center" }}>
+          <button
+            className="sd-btn sd-btn-soft"
+            onClick={onClear}
+            style={{ padding: "10px 18px" }}
+          >
+            ✕ Use a different photo
+          </button>
+          <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 4 }}>
+            <button
+              className="sd-btn sd-btn-primary"
+              onClick={onIdentify}
+              disabled={!hintsComplete}
+              style={{ padding: "10px 24px", fontSize: 15 }}
+              title={hintsComplete ? undefined : "Fill in all three field details first"}
+            >
+              🔍 Identify this find →
+            </button>
+            {!hintsComplete && (
+              <div
+                style={{
+                  fontSize: 11,
+                  color: "var(--ink-3)",
+                  fontStyle: "italic",
+                }}
+              >
+                Fill in all three field details to continue →
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       onDragOver={onDragOver}
@@ -301,55 +433,36 @@ function Kbd({ children }: { children: React.ReactNode }) {
   );
 }
 
-function TipsPanel() {
-  const tips = [
-    { n: "01", t: "Get close", d: "Fill the frame. The model needs texture and shape detail." },
-    { n: "02", t: "Good lighting", d: "Avoid harsh shadows. Overcast or open shade is ideal." },
-    { n: "03", t: "Scale reference", d: "A coin, a hiking pole, or your boot works perfectly." },
-    { n: "04", t: "Don't touch", d: "Seriously. Some species carry transmissible pathogens." },
-  ];
+/* ───────────────────────── Hints panel ─────────────────────────────
+   User-provided cues that help disambiguate when the model is uncertain.
+   All optional. Size is the strongest disambiguator (bear vs raccoon, etc.). */
+function HintsPanel({
+  hints,
+  setHints,
+}: {
+  hints: UserHints;
+  setHints: (h: UserHints) => void;
+}) {
+  const sizeOpts = Object.keys(SIZE_LABELS) as SizeBucket[];
+  const contentOpts = Object.keys(CONTENT_LABELS) as ContentTag[];
+  const habitatOpts = Object.keys(HABITAT_LABELS) as HabitatTag[];
+
+  const anyHints = Boolean(
+    hints.size ||
+      hints.habitat ||
+      (hints.contents && hints.contents.length > 0)
+  );
+
+  function toggleContent(c: ContentTag) {
+    const cur = hints.contents ?? [];
+    setHints({
+      ...hints,
+      contents: cur.includes(c) ? cur.filter((x) => x !== c) : [...cur, c],
+    });
+  }
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <div
-        style={{
-          background: "var(--paper)",
-          border: "1px solid var(--bone-3)",
-          borderRadius: 16,
-          padding: 22,
-        }}
-      >
-        <div className="sd-eyebrow" style={{ marginBottom: 12 }}>
-          📖 FIELD TIPS
-        </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {tips.map((tp) => (
-            <div
-              key={tp.n}
-              style={{ display: "grid", gridTemplateColumns: "auto 1fr", gap: 14 }}
-            >
-              <div
-                className="sd-mono"
-                style={{ fontSize: 13, color: "var(--forest)", fontWeight: 600 }}
-              >
-                {tp.n}
-              </div>
-              <div>
-                <div style={{ fontWeight: 600, fontSize: 14 }}>{tp.t}</div>
-                <div
-                  style={{
-                    fontSize: 13,
-                    color: "var(--ink-3)",
-                    marginTop: 2,
-                    lineHeight: 1.45,
-                  }}
-                >
-                  {tp.d}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div
         style={{
           background: "var(--paper)",
@@ -358,55 +471,164 @@ function TipsPanel() {
           padding: 18,
         }}
       >
-        <div className="sd-eyebrow" style={{ marginBottom: 10 }}>
-          EXAMPLE SHOTS
-        </div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
-          {["good · scale", "good · close", "bad · blurry"].map((label, i) => (
-            <div
-              key={label}
-              className="sd-ph"
-              style={{ aspectRatio: "1", position: "relative" }}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 6 }}>
+          <div className="sd-eyebrow">📐 FIELD DETAILS</div>
+          {anyHints && (
+            <button
+              onClick={() => setHints({})}
+              style={{
+                background: "none",
+                border: "none",
+                color: "var(--ink-3)",
+                fontSize: 11,
+                cursor: "pointer",
+                textDecoration: "underline",
+              }}
             >
-              <span style={{ position: "absolute", bottom: 6, left: 6, right: 6 }}>{label}</span>
-              {i === 2 && (
-                <span
-                  style={{
-                    position: "absolute",
-                    top: 6,
-                    right: 6,
-                    fontSize: 11,
-                    background: "var(--danger)",
-                    color: "white",
-                    padding: "1px 6px",
-                    borderRadius: 4,
-                  }}
-                >
-                  ✕
-                </span>
-              )}
-            </div>
-          ))}
+              clear all
+            </button>
+          )}
         </div>
+        <p style={{ fontSize: 12.5, color: "var(--ink-3)", lineHeight: 1.5, margin: "0 0 18px" }}>
+          <b style={{ color: "var(--danger)" }}>All fields required.</b> These observations are crucial for accurate ID — the model can&apos;t see size, smell, or where you actually are.
+        </p>
+
+        {/* SIZE */}
+        <HintSection label="Size" complete={Boolean(hints.size)}>
+          {sizeOpts.map((s) => (
+            <Chip
+              key={s}
+              active={hints.size === s}
+              onClick={() => setHints({ ...hints, size: hints.size === s ? undefined : s })}
+            >
+              {SIZE_LABELS[s]}
+            </Chip>
+          ))}
+        </HintSection>
+
+        {/* CONTENTS (multi-select) */}
+        <HintSection
+          label="Visible contents · pick at least one"
+          complete={Boolean(hints.contents && hints.contents.length > 0)}
+        >
+          {contentOpts.map((c) => (
+            <Chip
+              key={c}
+              active={(hints.contents ?? []).includes(c)}
+              onClick={() => toggleContent(c)}
+            >
+              {CONTENT_LABELS[c]}
+            </Chip>
+          ))}
+        </HintSection>
+
+        {/* HABITAT */}
+        <HintSection label="Habitat" complete={Boolean(hints.habitat)}>
+          {habitatOpts.map((h) => (
+            <Chip
+              key={h}
+              active={hints.habitat === h}
+              onClick={() => setHints({ ...hints, habitat: hints.habitat === h ? undefined : h })}
+            >
+              {HABITAT_LABELS[h]}
+            </Chip>
+          ))}
+        </HintSection>
       </div>
+
       <div
         style={{
-          padding: "14px 16px",
+          padding: "12px 14px",
           borderRadius: 12,
           background: "oklch(0.95 0.04 145)",
           border: "1px solid oklch(0.78 0.10 145)",
           display: "flex",
-          gap: 12,
+          gap: 10,
           alignItems: "flex-start",
         }}
       >
-        <div style={{ fontSize: 18 }}>🔬</div>
-        <div style={{ fontSize: 12.5, lineHeight: 1.5, color: "var(--ink-2)" }}>
-          <b>Why we ask.</b> Anonymized photos help train the model and feed the National Mammal
-          Tracking Initiative&apos;s range maps. Opt out anytime in settings.
+        <div style={{ fontSize: 16 }}>💡</div>
+        <div style={{ fontSize: 12, lineHeight: 1.5, color: "var(--ink-2)" }}>
+          Even one hint helps a lot. <b>Size alone</b> usually settles bear vs. raccoon vs. deer.
         </div>
       </div>
     </div>
+  );
+}
+
+function HintSection({
+  label,
+  complete,
+  children,
+}: {
+  label: string;
+  complete: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div
+        className="sd-mono"
+        style={{
+          fontSize: 10,
+          textTransform: "uppercase",
+          letterSpacing: ".12em",
+          color: "var(--ink-3)",
+          marginBottom: 8,
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+        }}
+      >
+        <span>{label}</span>
+        {complete ? (
+          <span style={{ color: "var(--ok)", fontSize: 11 }}>✓</span>
+        ) : (
+          <span style={{ color: "var(--danger)", fontSize: 11, fontWeight: 700 }}>* required</span>
+        )}
+      </div>
+      <div
+        style={{
+          display: "grid",
+          gridTemplateColumns: "1fr 1fr",
+          gap: 8,
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function Chip({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        padding: "10px 12px",
+        borderRadius: 10,
+        fontSize: 12.5,
+        fontWeight: 500,
+        cursor: "pointer",
+        border: `1px solid ${active ? "var(--ink)" : "var(--bone-3)"}`,
+        background: active ? "var(--ink)" : "var(--bone)",
+        color: active ? "var(--bone)" : "var(--ink-2)",
+        transition: "background .12s, color .12s, border-color .12s",
+        fontFamily: "inherit",
+        textAlign: "left",
+        lineHeight: 1.25,
+      }}
+    >
+      {children}
+    </button>
   );
 }
 
@@ -572,15 +794,29 @@ function SkelLine({
   return <div className="sd-skeleton" style={{ width: w, height: h, borderRadius: radius }} />;
 }
 
-function StatusList() {
-  const lines = [
-    { sym: "✓", color: "var(--ok)", text: "photo received" },
-    { sym: "✓", color: "var(--ok)", text: "background segmented" },
-    { sym: "✓", color: "var(--ok)", text: "shape signature extracted" },
-    { sym: "●", color: "var(--warn)", text: "matching against 200 species…", dim: false },
-    { sym: "◌", color: "var(--ink-4)", text: "generating card", dim: true },
-    { sym: "◌", color: "var(--ink-4)", text: "checking conservation flags", dim: true },
-  ];
+/* Analyzing status list — controlled by the parent via `currentStep`.
+   Step indices match the IdentifyStep events emitted by /api/identify, so
+   the UI advances in real lockstep with the server pipeline.
+
+     0 = waiting to start
+     1 = "photo_received" fired      → "Applying field details" active
+     2 = "hints_filtered" fired      → "Specialist model voting" active
+     3 = "clip_done" fired           → "Senior naturalist analyzing" active
+     4 = "claude_done" fired         → "Finalizing identification" active
+     5 = "result" fired              → all steps done */
+const STATUS_STEPS = [
+  "Photo received",
+  "Applying your field details",
+  "Specialist model voting",
+  "Senior naturalist analyzing photo",
+  "Finalizing identification",
+];
+
+function StatusList({ currentStep }: { currentStep: number }) {
+  // Progress bar: percent of completed steps. Snaps to step boundaries.
+  // CSS transition smooths the visual transition between snaps.
+  const progress = Math.min(100, (currentStep / STATUS_STEPS.length) * 100);
+
   return (
     <div
       style={{
@@ -590,14 +826,101 @@ function StatusList() {
         fontFamily: "var(--font-mono)",
         fontSize: 11,
         color: "var(--ink-3)",
-        lineHeight: 1.8,
+        display: "flex",
+        flexDirection: "column",
+        gap: 10,
       }}
     >
-      {lines.map((l, i) => (
-        <div key={i} style={{ opacity: l.dim ? 0.4 : 1 }}>
-          ▸ <span style={{ color: l.color }}>{l.sym}</span> {l.text}
+      {/* Progress bar */}
+      <div>
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            fontSize: 10,
+            color: "var(--ink-3)",
+            marginBottom: 4,
+            letterSpacing: ".08em",
+          }}
+        >
+          <span>ANALYZING…</span>
+          <span style={{ color: "var(--ink-2)", fontWeight: 600 }}>
+            {progress.toFixed(0)}%
+          </span>
         </div>
-      ))}
+        <div
+          style={{
+            height: 4,
+            borderRadius: 999,
+            background: "var(--bone-3)",
+            overflow: "hidden",
+          }}
+        >
+          <div
+            style={{
+              width: `${progress}%`,
+              height: "100%",
+              background: "linear-gradient(90deg, var(--forest), var(--moss))",
+              borderRadius: 999,
+              transition: "width .12s linear",
+            }}
+          />
+        </div>
+      </div>
+
+      {/* Step list */}
+      <div style={{ lineHeight: 1.8 }}>
+        {STATUS_STEPS.map((step, i) => {
+          const done = i < currentStep;
+          const active = i === currentStep;
+          const sym = done ? "✓" : active ? "●" : "◌";
+          const color = done
+            ? "var(--ok)"
+            : active
+            ? "var(--warn)"
+            : "var(--ink-4)";
+          return (
+            <div
+              key={i}
+              style={{
+                opacity: done ? 0.55 : active ? 1 : 0.35,
+                color: active ? "var(--ink)" : "var(--ink-3)",
+                transition: "opacity .25s ease, color .25s ease",
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+              }}
+            >
+              ▸
+              <span
+                style={{
+                  color,
+                  display: "inline-flex",
+                  alignItems: "center",
+                  width: 14,
+                  animation: active ? "sd-pulse 1.2s ease-in-out infinite" : "none",
+                }}
+              >
+                {sym}
+              </span>
+              <span>{step}</span>
+              {active && (
+                <span
+                  className="sd-mono"
+                  style={{
+                    marginLeft: "auto",
+                    fontSize: 9,
+                    color: "var(--ink-4)",
+                    letterSpacing: ".08em",
+                  }}
+                >
+                  in progress
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </div>
   );
 }
@@ -613,6 +936,7 @@ function RevealView({
   onCollect,
   onAgain,
   result,
+  existingSpeciesCount,
 }: {
   card: ScatCardData;
   photo: string | null;
@@ -622,6 +946,7 @@ function RevealView({
   onCollect: () => void;
   onAgain: () => void;
   result: IdentifyResult | null;
+  existingSpeciesCount: number;
 }) {
   const confPct = result && result.confidence > 0 ? (result.confidence * 100).toFixed(1) : null;
   const usedFallback = result?.source === "mock";
@@ -632,6 +957,12 @@ function RevealView({
     claude: { label: "Claude Vision", color: "var(--clay)" },
     claude_fallback: { label: "Claude (YOLO was unsure)", color: "var(--clay)" },
     mock: { label: "sample card", color: "var(--ink-3)" },
+  };
+  const rarityColor: Record<ScatCardData["rarity"], string> = {
+    Common: "var(--r-common)",
+    Uncommon: "var(--r-uncommon)",
+    Rare: "var(--r-rare)",
+    Legendary: "var(--r-legendary)",
   };
   const badge = result ? sourceBadge[result.source] : null;
   return (
@@ -660,7 +991,7 @@ function RevealView({
               fontVariationSettings: "'opsz' 48",
             }}
           >
-            You found a <i style={{ color: "var(--clay)" }}>{card.rarity}</i>.
+            You found a <i style={{ color: rarityColor[card.rarity] }}>{card.rarity}</i>.
           </h1>
           <p style={{ margin: "8px 0 0", fontSize: 15, color: "var(--ink-2)" }}>
             {noMatch ? (
@@ -707,80 +1038,150 @@ function RevealView({
                 letterSpacing: ".08em",
               }}
             >
-              YOLO guessed: {result.yoloPick.species} ({(result.yoloPick.confidence * 100).toFixed(1)}%) — too low to trust
+              CLIP guessed: {result.yoloPick.species} ({(result.yoloPick.confidence * 100).toFixed(1)}%) — too low to trust
             </p>
+          )}
+          {result?.hintChangedTop && result.yoloPick && card && (
+            <div
+              style={{
+                margin: "12px auto 0",
+                maxWidth: 600,
+                padding: "10px 14px",
+                background: "oklch(0.95 0.05 70)",
+                border: "1px solid oklch(0.78 0.10 70)",
+                borderRadius: 10,
+                fontSize: 12.5,
+                lineHeight: 1.5,
+                color: "var(--ink-2)",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+              }}
+            >
+              <span style={{ fontSize: 14 }}>🎯</span>
+              <span>
+                <b>Your details narrowed it down.</b> The model originally leaned{" "}
+                <b>{result.yoloPick.species}</b>, but your size / shape / habitat hints pointed to{" "}
+                <b>{card.species}</b>.
+              </span>
+            </div>
           )}
         </div>
 
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "1fr auto 1fr",
+            gridTemplateColumns: "auto 280px",
             gap: 32,
-            alignItems: "center",
+            alignItems: "start",
+            justifyContent: "center",
             marginBottom: 36,
           }}
         >
-          <div style={{ justifySelf: "end", maxWidth: 280 }}>
-            <div className="sd-eyebrow" style={{ marginBottom: 8 }}>
-              YOUR SHOT
-            </div>
-            {photo ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={photo}
-                alt="Your shot"
-                style={{ width: 240, height: 240, objectFit: "cover", borderRadius: 14 }}
-              />
-            ) : (
+          <div>
+            <div style={{ position: "relative" }}>
               <div
-                className="sd-ph"
                 style={{
-                  width: 240,
-                  height: 240,
-                  borderRadius: 14,
+                  position: "absolute",
+                  inset: -30,
                   background:
-                    "linear-gradient(180deg, oklch(0.55 0.04 90), oklch(0.40 0.05 70))",
-                  color: "oklch(0.92 0.02 80)",
+                    "radial-gradient(50% 50% at 50% 50%, oklch(0.85 0.18 80 / 0.45), transparent 70%)",
+                  filter: "blur(20px)",
+                  pointerEvents: "none",
                 }}
-              >
-                user photo · trail bed
+              />
+              <div style={{ position: "relative" }} className="sd-card-reveal">
+                <ScatCard card={card} />
+                {existingSpeciesCount === 0 && (
+                  <div
+                    className="sd-mono"
+                    style={{
+                      position: "absolute",
+                      top: -14,
+                      left: -16,
+                      zIndex: 4,
+                      padding: "8px 11px",
+                      borderRadius: 999,
+                      background: "var(--forest)",
+                      color: "white",
+                      border: "3px solid var(--bone)",
+                      boxShadow: "var(--sh-2)",
+                      fontSize: 11,
+                      fontWeight: 700,
+                      letterSpacing: ".12em",
+                    }}
+                  >
+                    NEW
+                  </div>
+                )}
               </div>
-            )}
+            </div>
             <div
-              className="sd-mono"
               style={{
-                fontSize: 10,
-                color: "var(--ink-3)",
-                marginTop: 8,
-                letterSpacing: ".08em",
+                width: 320,
+                marginTop: 14,
+                textAlign: "center",
+                fontSize: 13,
+                color: "var(--ink-2)",
+                lineHeight: 1.45,
               }}
             >
-              IMG · uploaded just now
-              <br />
-              {card.identifiedAt}
-              <br />
-              {card.location}
+              {existingSpeciesCount > 0 ? (
+                <>
+                  Already in your Dex ·{" "}
+                  <b style={{ color: "var(--ink)" }}>
+                    {existingSpeciesCount} {existingSpeciesCount === 1 ? "card" : "cards"} owned
+                  </b>
+                </>
+              ) : (
+                <b style={{ color: "var(--forest)" }}>New discovery · not yet in your Dex</b>
+              )}
             </div>
           </div>
 
-          <div style={{ position: "relative" }}>
-            <div
-              style={{
-                position: "absolute",
-                inset: -30,
-                background:
-                  "radial-gradient(50% 50% at 50% 50%, oklch(0.85 0.18 80 / 0.45), transparent 70%)",
-                filter: "blur(20px)",
-                pointerEvents: "none",
-              }}
-            />
-            <div style={{ position: "relative" }} className="sd-card-reveal">
-              <ScatCard card={card} />
+          <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+            <div>
+              <div className="sd-eyebrow" style={{ marginBottom: 8 }}>
+                YOUR SHOT
+              </div>
+              {photo ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={photo}
+                  alt="Your shot"
+                  style={{ width: 280, height: 180, objectFit: "cover", borderRadius: 14 }}
+                />
+              ) : (
+                <div
+                  className="sd-ph"
+                  style={{
+                    width: 280,
+                    height: 180,
+                    borderRadius: 14,
+                    background:
+                      "linear-gradient(180deg, oklch(0.55 0.04 90), oklch(0.40 0.05 70))",
+                    color: "oklch(0.92 0.02 80)",
+                  }}
+                >
+                  user photo · trail bed
+                </div>
+              )}
+              <div
+                className="sd-mono"
+                style={{
+                  fontSize: 10,
+                  color: "var(--ink-3)",
+                  marginTop: 8,
+                  letterSpacing: ".08em",
+                }}
+              >
+                IMG · uploaded just now
+                <br />
+                {card.identifiedAt}
+                <br />
+                {card.location}
+              </div>
             </div>
-          </div>
-
-          <div style={{ maxWidth: 280 }}>
             <div className="sd-eyebrow" style={{ marginBottom: 8 }}>
               DID WE GET IT RIGHT?
             </div>
@@ -876,6 +1277,13 @@ function RevealView({
             disabled={collected}
           >
             {collected ? "✓ Added!" : "＋ Add to Collection"}
+          </button>
+          <button
+            className="sd-btn sd-btn-soft"
+            style={{ padding: "14px 24px", fontSize: 15, color: "var(--danger)" }}
+            onClick={onAgain}
+          >
+            ✕ Discard Card
           </button>
           <button
             className="sd-btn sd-btn-ghost"

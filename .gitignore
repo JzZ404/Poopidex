@@ -33,6 +33,7 @@ next-env.d.ts
 feces_yolo/
 feces_yolo_data/
 scripts/models/
+scripts/_hf_space/
 *.pt
 *.weights
 

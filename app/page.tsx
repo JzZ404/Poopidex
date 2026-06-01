@@ -2,23 +2,11 @@ import Link from "next/link";
 import Container from "@/components/ui/Container";
 import Logo from "@/components/ui/Logo";
 import ScatCard from "@/components/cards/ScatCard";
+import HeroCardDeck from "@/components/cards/HeroCardDeck";
 import { ScatCard as ScatCardData } from "@/lib/types";
 
 const heroCards: ScatCardData[] = [
-  {
-    species: "Red Fox",
-    speciesScientific: "Vulpes vulpes",
-    rarity: "Uncommon",
-    freshness: "< 1 hour",
-    funFact: "Foxes use raised objects as scent posts at territory edges.",
-    illustrationVariant: "C — Trotting",
-    conservationFlag: false,
-    stats: { size: 4, smell: 6, danger: 2 },
-    identifiedAt: "Apr 11 · 4:22 PM",
-    location: "Mt. Tam, CA",
-    coords: "37.9235° N, 122.5965° W",
-    serial: "047 / 200",
-  },
+  // [0] center / front — Legendary · Forest
   {
     species: "Brown Bear",
     speciesScientific: "Ursus arctos",
@@ -34,34 +22,65 @@ const heroCards: ScatCardData[] = [
     coords: "58.5973° N, 155.0260° W",
     serial: "104 / 200",
   },
+  // [1] lower-right layer, partly visible — Rare · Desert
   {
-    species: "Coyote",
-    speciesScientific: "Canis latrans",
+    species: "Ringtail",
+    speciesScientific: "Bassariscus astutus",
     rarity: "Rare",
     freshness: "2–4 hours",
-    funFact: "Coyote scat is twisted at one end and usually packed with rodent fur.",
-    illustrationVariant: "A — Mature",
+    funFact: "Ringtails were once kept by miners to control mice — they're called \"miner's cats.\"",
+    illustrationVariant: "B — Canyon edge",
     conservationFlag: false,
-    stats: { size: 5, smell: 7, danger: 4 },
-    identifiedAt: "Apr 17 · 11:14 AM",
+    stats: { size: 3, smell: 6, danger: 2 },
+    identifiedAt: "Apr 17 · 8:26 AM",
     location: "Joshua Tree, CA",
     coords: "33.8734° N, 115.9010° W",
+    serial: "081 / 200",
+  },
+  // [2] back-left — Uncommon · Water
+  {
+    species: "American Beaver",
+    speciesScientific: "Castor canadensis",
+    rarity: "Uncommon",
+    freshness: "< 1 hour",
+    funFact: "Beaver scat contains so much wood fiber that it floats — search downstream of dams.",
+    illustrationVariant: "B — Pond edge",
+    conservationFlag: false,
+    stats: { size: 4, smell: 4, danger: 1 },
+    identifiedAt: "Apr 11 · 4:22 PM",
+    location: "Yellowstone, WY",
+    coords: "44.4280° N, 110.5885° W",
+    serial: "047 / 200",
+  },
+  // [3] lowest layer — Common · Urban
+  {
+    species: "Common Raccoon",
+    speciesScientific: "Procyon lotor",
+    rarity: "Common",
+    freshness: "2–4 hours",
+    funFact: "Raccoons designate communal latrines — multiple raccoons use one spot over months.",
+    illustrationVariant: "A — Alley",
+    conservationFlag: false,
+    stats: { size: 4, smell: 7, danger: 3 },
+    identifiedAt: "Apr 17 · 11:14 AM",
+    location: "Brooklyn, NY",
+    coords: "40.6782° N, 73.9442° W",
     serial: "034 / 200",
   },
 ];
 
 const recentFinds: ScatCardData[] = [
-  heroCards[0],
   heroCards[2],
+  heroCards[3],
   {
-    species: "Raccoon",
-    speciesScientific: "Procyon lotor",
-    rarity: "Uncommon",
+    species: "Bobcat",
+    speciesScientific: "Lynx rufus",
+    rarity: "Rare",
     freshness: "< 1 hour",
-    funFact: "Raccoons use shared latrines — assume several individuals nearby.",
-    illustrationVariant: "A — Forest floor",
+    funFact: "Bobcats often bury or scrape soil over their scat — look for the rake marks.",
+    illustrationVariant: "A — Trail edge",
     conservationFlag: false,
-    stats: { size: 4, smell: 7, danger: 3 },
+    stats: { size: 4, smell: 5, danger: 6 },
     identifiedAt: "Apr 17 · 5:01 PM",
     location: "Great Smoky, TN",
     coords: "35.6532° N, 83.5070° W",
@@ -218,32 +237,7 @@ export default function Home() {
                 <span>WORKS OFFLINE</span>
               </div>
             </div>
-            <div style={{ position: "relative", height: 500 }}>
-              <div style={{ position: "absolute", top: 40, left: 0, transform: "rotate(-9deg)" }}>
-                <ScatCard card={heroCards[0]} />
-              </div>
-              <div
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 150,
-                  transform: "rotate(3deg)",
-                  zIndex: 2,
-                }}
-              >
-                <ScatCard card={heroCards[1]} />
-              </div>
-              <div
-                style={{
-                  position: "absolute",
-                  bottom: 0,
-                  right: 0,
-                  transform: "rotate(10deg)",
-                }}
-              >
-                <ScatCard card={heroCards[2]} />
-              </div>
-            </div>
+            <HeroCardDeck cards={heroCards} />
           </div>
         </Container>
       </section>

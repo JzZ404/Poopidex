@@ -1,6 +1,16 @@
 "use client";
 
-import { ART_BY_SPECIES, Rarity, ScatCard as ScatCardData } from "@/lib/types";
+import {
+  ART_BY_SPECIES,
+  Rarity,
+  ScatCard as ScatCardData,
+  findSpec,
+  ELEMENT_LABELS,
+  ELEMENT_ART,
+  CLASS_LABELS,
+  ELEMENT_COLORS,
+  CLASS_COLORS,
+} from "@/lib/types";
 
 const RARITY: Record<Rarity, { color: string; bg: string; label: string; glyph: string }> = {
   Common:    { color: "var(--r-common)",    bg: "var(--r-common-bg)",    label: "Common",    glyph: "●" },
@@ -8,6 +18,14 @@ const RARITY: Record<Rarity, { color: string; bg: string; label: string; glyph: 
   Rare:      { color: "var(--r-rare)",      bg: "var(--r-rare-bg)",      label: "Rare",      glyph: "✦" },
   Legendary: { color: "var(--r-legendary)", bg: "var(--r-legendary-bg)", label: "Legendary", glyph: "✺" },
 };
+
+/* Per-rarity backdrop — color tint only, no pattern. */
+function rarityBackdrop(rarity: Rarity): { background: string } {
+  const r = RARITY[rarity];
+  return {
+    background: `linear-gradient(180deg, oklch(from ${r.bg} calc(l - 0.025) c h) 0%, ${r.bg} 100%)`,
+  };
+}
 
 function hash(s: string): number {
   let h = 0;
@@ -229,6 +247,66 @@ export function RarityStamp({ rarity, small = false }: { rarity: Rarity; small?:
   );
 }
 
+/* Element + Class badges — shown below the rarity stamp.
+   Looked up from SPECIES_LIST so cards stay in sync if you re-tier later. */
+export function TypeBadges({ species, small = false }: { species: string; small?: boolean }) {
+  const spec = findSpec(species);
+  if (!spec) return null;
+
+  const elementColor = ELEMENT_COLORS[spec.element];
+  const classColor = CLASS_COLORS[spec.class];
+
+  return (
+    <div
+      style={{
+        display: "flex",
+        gap: 6,
+        marginBottom: small ? 8 : 12,
+      }}
+    >
+      <Badge color={elementColor} small={small}>
+        <span style={{ fontSize: small ? 11 : 13 }}>{ELEMENT_LABELS[spec.element]}</span>
+        <span>{spec.element}</span>
+      </Badge>
+      <Badge color={classColor} small={small}>
+        <span style={{ fontSize: small ? 11 : 13 }}>{CLASS_LABELS[spec.class]}</span>
+        <span>{spec.class}</span>
+      </Badge>
+    </div>
+  );
+}
+
+function Badge({
+  color,
+  small,
+  children,
+}: {
+  color: string;
+  small: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: small ? 3 : 4,
+        padding: small ? "2px 6px" : "3px 8px",
+        background: `${color}`,
+        color: "white",
+        borderRadius: 6,
+        fontSize: small ? 8.5 : 10,
+        fontWeight: 600,
+        letterSpacing: ".06em",
+        textTransform: "uppercase",
+        opacity: 0.92,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
 interface ScatCardProps {
   card: ScatCardData;
   size?: "lg" | "sm";
@@ -240,19 +318,36 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
   const r = RARITY[card.rarity];
   const big = size === "lg";
   const isLegend = card.rarity === "Legendary";
-  const W = big ? 320 : 200;
+  const W = big ? 320 : 220;
+  // Fixed total height — ensures every card in the grid is the same size,
+  // regardless of whether it has a conservation banner or longer fun fact.
+  const H = big ? 580 : 360;
+
+  // Legendary cards get a pulsing gold halo via box-shadow.
+  // Other rarities get a soft shadow tinted to their rarity color.
+  const legendaryHalo =
+    "0 0 0 1px oklch(0.85 0.14 80 / .55), " +
+    "0 0 18px 2px oklch(0.85 0.18 80 / .55), " +
+    "0 0 38px 6px oklch(0.82 0.20 70 / .35), " +
+    "var(--sh-card)";
 
   return (
     <div
       className={className}
       style={{
         width: W,
+        height: H,
         borderRadius: big ? 18 : 14,
         padding: big ? 3 : 2,
         background: `linear-gradient(160deg, ${r.color} 0%, oklch(from ${r.color} calc(l + 0.08) c h) 100%)`,
-        boxShadow: big ? "var(--sh-card)" : "var(--sh-2)",
+        boxShadow: isLegend
+          ? legendaryHalo
+          : big
+          ? `0 8px 24px -10px ${r.color}, var(--sh-card)`
+          : "var(--sh-2)",
         position: "relative",
         fontFamily: "var(--font-ui)",
+        animation: isLegend && big ? "sd-legend-pulse 2.4s ease-in-out infinite" : undefined,
         ...style,
       }}
     >
@@ -274,50 +369,64 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
       )}
       <div
         style={{
-          background: "var(--paper)",
+          // Rarity-specific backdrop: color tint + a distinguishing pattern
+          // (dots / stripes / crosshatch / sunburst).
+          ...rarityBackdrop(card.rarity),
           borderRadius: big ? 15 : 12,
-          padding: big ? 14 : 9,
+          // Extra top padding on big cards so the rarity pill doesn't hug the
+          // edge — matches the visual breathing room of the small cards.
+          padding: big ? "20px 16px 16px 16px" : 10,
           position: "relative",
           overflow: "hidden",
+          height: "100%",
+          display: "flex",
+          flexDirection: "column",
         }}
       >
-        {/* Top row */}
+        {/* ─── Header: rarity pill + name (top-left) + element circle (top-right) ─── */}
         <div
           style={{
             display: "flex",
+            alignItems: "flex-start",
             justifyContent: "space-between",
-            alignItems: "center",
+            gap: 8,
             marginBottom: big ? 10 : 6,
           }}
         >
-          <RarityStamp rarity={card.rarity} small={!big} />
-          <div
-            className="sd-mono"
-            style={{
-              fontSize: big ? 10 : 8.5,
-              color: "var(--ink-2)",
-              display: "flex",
-              alignItems: "center",
-              gap: 5,
-            }}
-          >
-            <span
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ marginBottom: big ? 6 : 4 }}>
+              <RarityStamp rarity={card.rarity} small={!big} />
+            </div>
+            <div
+              className="sd-display"
               style={{
-                width: 6,
-                height: 6,
-                borderRadius: 999,
-                background: card.freshness.startsWith("<")
-                  ? "var(--ok)"
-                  : card.freshness.includes("1+")
-                  ? "var(--ink-4)"
-                  : "var(--warn)",
+                fontSize: big ? 24 : 16,
+                fontWeight: 700,
+                lineHeight: 1.05,
+                color: "var(--ink)",
+                letterSpacing: "-0.015em",
+                fontVariationSettings: `'opsz' ${big ? 32 : 20}`,
               }}
-            />
-            {card.freshness}
+            >
+              {card.species}
+            </div>
+            <div
+              style={{
+                fontFamily: "var(--font-display)",
+                fontStyle: "italic",
+                fontSize: big ? 11 : 9,
+                color: "var(--ink-3)",
+                marginTop: 2,
+                fontWeight: 400,
+              }}
+            >
+              {card.speciesScientific}
+            </div>
           </div>
+          <ElementCircle species={card.species} rarity={card.rarity} big={big} />
         </div>
 
-        {/* Illustration */}
+        {/* ─── Illustration ─── */}
         <CardArt
           species={card.species}
           rarity={card.rarity}
@@ -325,91 +434,47 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
           size={size}
         />
 
-        {/* Name block */}
-        <div style={{ marginTop: big ? 12 : 7 }}>
-          <div
-            className="sd-display"
-            style={{
-              fontSize: big ? 26 : 16,
-              fontWeight: 600,
-              lineHeight: 1.0,
-              color: "var(--ink)",
-              fontVariationSettings: `'opsz' ${big ? 36 : 18}`,
-            }}
-          >
-            {card.species}
-          </div>
-          <div
-            style={{
-              fontFamily: "var(--font-display)",
-              fontStyle: "italic",
-              fontSize: big ? 13 : 10,
-              color: "var(--ink-3)",
-              marginTop: 3,
-              fontWeight: 400,
-            }}
-          >
-            {card.speciesScientific}
-          </div>
-        </div>
-
-        {/* Stat dots */}
+        {/* ─── Field note (description below pic) ─── shown on both sizes
+              for visual consistency. flex:1 makes it absorb any extra vertical
+              space so all cards end up the same total height. */}
         <div
           style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: big ? 5 : 3,
-            marginTop: big ? 12 : 7,
-            padding: big ? "10px 12px" : "6px 8px",
-            background: "var(--bone)",
-            borderRadius: big ? 10 : 7,
-            border: "1px solid var(--bone-3)",
+            marginTop: big ? 10 : 6,
+            padding: big ? "8px 10px 8px 12px" : "5px 7px 5px 8px",
+            borderLeft: "2px solid var(--bone-3)",
+            fontSize: big ? 12 : 9.5,
+            lineHeight: 1.4,
+            color: "var(--ink-2)",
+            fontStyle: "italic",
+            fontFamily: "var(--font-display)",
+            flex: 1,
+            minHeight: 0,
+            overflow: "hidden",
           }}
         >
-          <StatDots label="Size" value={card.stats.size} big={big} />
-          <StatDots label="Smell" value={card.stats.smell} big={big} />
-          <StatDots label="Danger" value={card.stats.danger} big={big} />
-        </div>
-
-        {/* Field note */}
-        {big && (
-          <div
+          <span
+            className="sd-mono"
             style={{
-              marginTop: 10,
-              padding: "8px 10px 8px 12px",
-              background: "transparent",
-              borderLeft: "2px solid var(--bone-3)",
-              fontSize: 12,
-              lineHeight: 1.5,
-              color: "var(--ink-2)",
-              fontStyle: "italic",
-              fontFamily: "var(--font-display)",
+              fontSize: big ? 8 : 7,
+              textTransform: "uppercase",
+              letterSpacing: ".16em",
+              color: "var(--ink-3)",
+              display: "block",
+              marginBottom: big ? 4 : 2,
+              fontStyle: "normal",
             }}
           >
-            <span
-              className="sd-mono"
-              style={{
-                fontSize: 8,
-                textTransform: "uppercase",
-                letterSpacing: ".16em",
-                color: "var(--ink-3)",
-                display: "block",
-                marginBottom: 4,
-                fontStyle: "normal",
-              }}
-            >
-              Field note
-            </span>
-            {card.funFact}
-          </div>
-        )}
+            Field note
+          </span>
+          {card.funFact}
+        </div>
 
-        {/* Conservation banner */}
+        {/* ─── Conservation banner ─── only on big */}
         {card.conservationFlag && big && (
           <div
             style={{
               marginTop: 8,
-              padding: "7px 10px",
+              padding: "6px 10px",
               background: "oklch(0.95 0.05 28)",
               border: "1px solid oklch(0.78 0.12 28)",
               color: "var(--danger)",
@@ -428,27 +493,60 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
           </div>
         )}
 
-        {/* Footer */}
+        {/* ─── Stat boxes (Pokemon TCG style three-column) ─── */}
         <div
           style={{
-            marginTop: big ? 12 : 7,
-            paddingTop: big ? 10 : 6,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr 1fr",
+            gap: big ? 6 : 4,
+            marginTop: big ? 10 : 6,
+          }}
+        >
+          <StatBox label="Size"   value={card.stats.size}   big={big} />
+          <StatBox label="Smell"  value={card.stats.smell}  big={big} />
+          <StatBox label="Danger" value={card.stats.danger} big={big} />
+        </div>
+
+        {/* ─── Footer: freshness + serial ─── */}
+        <div
+          style={{
+            marginTop: big ? 10 : 6,
+            paddingTop: big ? 8 : 5,
             borderTop: "1px solid var(--bone-3)",
             display: "flex",
             justifyContent: "space-between",
+            alignItems: "center",
+            gap: 6,
             fontFamily: "var(--font-mono)",
             fontSize: big ? 9.5 : 8,
-            letterSpacing: ".04em",
             color: "var(--ink-3)",
           }}
         >
-          <div>
-            <div>{card.identifiedAt}</div>
-            <div style={{ color: "var(--ink-2)" }}>{card.location}</div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              color: "var(--ink-2)",
+              letterSpacing: ".04em",
+            }}
+          >
+            <span
+              style={{
+                width: big ? 6 : 5,
+                height: big ? 6 : 5,
+                borderRadius: 999,
+                background: card.freshness.startsWith("<")
+                  ? "var(--ok)"
+                  : card.freshness.includes("1+")
+                  ? "var(--ink-4)"
+                  : "var(--warn)",
+              }}
+            />
+            {card.freshness}
           </div>
-          <div style={{ textAlign: "right" }}>
-            <div>{card.coords}</div>
-            <div>{card.serial}</div>
+          <div style={{ textAlign: "right", letterSpacing: ".04em" }}>
+            {card.serial}
           </div>
         </div>
       </div>
@@ -456,14 +554,168 @@ export default function ScatCard({ card, size = "lg", className, style }: ScatCa
   );
 }
 
+/* ─── Element circle (top-right of card) ──────────────────────
+   Big colored circle with the element emoji centered.
+   The border ring picks up the rarity color for visual hierarchy. */
+function ElementCircle({
+  species,
+  rarity,
+  big,
+}: {
+  species: string;
+  rarity: Rarity;
+  big: boolean;
+}) {
+  const spec = findSpec(species);
+  if (!spec) return null;
+
+  const size = big ? 80 : 52;
+  const fontSize = big ? 36 : 24;
+  const elementColor = ELEMENT_COLORS[spec.element];
+  const ringColor = RARITY[rarity].color;
+  const artSrc = ELEMENT_ART[spec.element];
+
+  return (
+    <div
+      style={{
+        flex: "0 0 auto",
+        width: size,
+        height: size,
+        borderRadius: 999,
+        // When art exists, let the image fill the circle. Otherwise show the
+        // colored gradient so the emoji fallback has something to sit on.
+        background: artSrc
+          ? "transparent"
+          : `radial-gradient(circle at 30% 30%, oklch(from ${elementColor} calc(l + 0.12) c h) 0%, ${elementColor} 100%)`,
+        border: `${big ? 3 : 2}px solid ${ringColor}`,
+        boxShadow: `0 2px 6px rgba(0,0,0,0.15), inset 0 -2px 4px rgba(0,0,0,0.15)`,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontSize,
+        lineHeight: 1,
+        overflow: "hidden",
+      }}
+      title={spec.element}
+    >
+      {artSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={artSrc}
+          alt={spec.element}
+          style={{
+            width: "100%",
+            height: "100%",
+            objectFit: "cover",
+            display: "block",
+          }}
+        />
+      ) : (
+        ELEMENT_LABELS[spec.element]
+      )}
+    </div>
+  );
+}
+
+/* ─── Class row (below illustration) ────────────────────────────
+   Smaller circle + class label. Pokemon TCG style "energy" indicator. */
+function ClassRow({ species }: { species: string }) {
+  const spec = findSpec(species);
+  if (!spec) return null;
+
+  const classColor = CLASS_COLORS[spec.class];
+
+  return (
+    <div
+      style={{
+        marginTop: 10,
+        display: "flex",
+        alignItems: "center",
+        gap: 10,
+      }}
+    >
+      <div
+        style={{
+          width: 32,
+          height: 32,
+          borderRadius: 999,
+          background: `radial-gradient(circle at 30% 30%, oklch(from ${classColor} calc(l + 0.12) c h) 0%, ${classColor} 100%)`,
+          border: "2px solid var(--ink)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          fontSize: 16,
+          lineHeight: 1,
+          flex: "0 0 auto",
+        }}
+        title={spec.class}
+      >
+        {CLASS_LABELS[spec.class]}
+      </div>
+      <div
+        className="sd-mono"
+        style={{
+          fontSize: 11,
+          fontWeight: 700,
+          letterSpacing: ".14em",
+          textTransform: "uppercase",
+          color: "var(--ink-2)",
+        }}
+      >
+        {spec.class}
+      </div>
+    </div>
+  );
+}
+
+/* ─── Stat box (Pokemon TCG bottom three-column) ────────────── */
+function StatBox({ label, value, big }: { label: string; value: number; big: boolean }) {
+  return (
+    <div
+      style={{
+        background: "var(--bone)",
+        border: "1px solid var(--bone-3)",
+        borderRadius: 6,
+        padding: big ? "5px 6px" : "3px 4px",
+        textAlign: "center",
+      }}
+    >
+      <div
+        className="sd-mono"
+        style={{
+          fontSize: big ? 8 : 7,
+          letterSpacing: ".12em",
+          textTransform: "uppercase",
+          color: "var(--ink-3)",
+          marginBottom: 1,
+        }}
+      >
+        {label}
+      </div>
+      <div
+        className="sd-display"
+        style={{
+          fontSize: big ? 18 : 13,
+          fontWeight: 700,
+          color: "var(--ink)",
+          lineHeight: 1,
+        }}
+      >
+        {value}
+      </div>
+    </div>
+  );
+}
+
 export function LockedCard({ size = "sm" }: { size?: "lg" | "sm" }) {
   const big = size === "lg";
-  const W = big ? 320 : 200;
+  const W = big ? 320 : 220;
+  const H = big ? 580 : 360;
   return (
     <div
       style={{
         width: W,
-        aspectRatio: "0.66",
+        height: H,
         borderRadius: big ? 18 : 14,
         background: "repeating-linear-gradient(45deg, var(--bone-2) 0 6px, var(--bone) 6px 12px)",
         border: "2px dashed var(--bone-3)",

@@ -18,17 +18,16 @@ Snap a photo of wild animal scat, get a collectible field-guide card. Build your
 2. **Collect** — Every find earns a collectible card with rarity tier, stats, fun fact, and a painted illustration of the animal.
 3. **Conserve** — Flagged species (rare or threatened) trigger conservation alerts. Your finds plot on a map and contribute to the citizen-science Dex.
 
-Five species are supported out of the box with full illustrations:
+**20 species are fully cataloged** with painted illustrations, rarity tiers, element types (Forest · Mountain · Desert · Water · Plains · Urban · Shadow), and biological attribute rules:
 
-| Species | Rarity |
+| Tier | Species |
 |---|---|
-| Brown Bear | Legendary |
-| Coyote | Rare |
-| Red Fox | Uncommon |
-| Raccoon | Uncommon |
-| Striped Skunk | Common |
+| 🟡 **Legendary** | Brown Bear · Gray Wolf · Mountain Lion · Moose · American Bison |
+| 🔵 **Rare** | Bobcat · Fisher · Pronghorn · North American River Otter · Ringtail |
+| 🟢 **Uncommon** | North American Porcupine · American Beaver · Big-Eared Woodrat · Wild Boar · Black-Tailed Jackrabbit |
+| ⚪ **Common** | Coyote · Red Fox · Common Raccoon · Striped Skunk · White-Tailed Deer |
 
-The underlying model recognizes 101 species — any of them can be identified, but species without illustrations render with a placeholder graphic.
+Rarity reflects how hard the species is to encounter in the wild (Common = backyard / Legendary = deep wilderness), not how easy it is to identify.
 
 ---
 
@@ -37,24 +36,32 @@ The underlying model recognizes 101 species — any of them can be identified, b
 | Layer | Tech |
 |---|---|
 | **Frontend** | Next.js 16 (App Router) + React 19 + Tailwind v4 |
-| **Backend (Node API routes)** | Next.js `/api/identify` — orchestrates AI calls |
-| **AI #1 — Specialized model** | YOLO11n trained on the [AnimalClue feces dataset](https://huggingface.co/datasets/risashinoda/feces_yolo) (ICCV 2025), served via FastAPI |
-| **AI #2 — General fallback** | Claude Sonnet 4 via Anthropic API |
+| **Backend** | Next.js `/api/identify` route — streams pipeline events as NDJSON |
+| **AI · Decider** | **Claude Opus 4.7** via Anthropic API. Sees image + user hints + CLIP's advisory vote. Returns structured tool output with a required `analysis` chain-of-thought field. |
+| **AI · Specialist advisor** | **CLIP ViT-B/32** fine-tuned on [AnimalClue feces dataset](https://huggingface.co/datasets/risashinoda/feces_yolo) (ICCV 2025). Top-5 predictions are filtered (≥20 training samples per species) and passed to Claude as a low-weight signal. |
+| **User hints (mandatory)** | Size + Habitat + Visible contents. Hard biological filters: e.g. `Tiny + Desert + Bone fragments` excludes every species that biologically can't satisfy all three. |
 | **Persistence** | `localStorage` for the user's collection (anonymous, no signup) |
-| **Hosting** | Vercel (frontend) · Hugging Face Spaces (YOLO server) |
+| **Hosting** | Vercel (frontend) · Hugging Face Spaces (CLIP server) |
 
-### How the AI hybrid works
+### How the hybrid pipeline works
 
 ```
-User uploads photo
+User uploads photo + mandatory hints (size · habitat · contents)
    ↓
-YOLO model runs (fast + free)
+Hint hard filter — compute "allowed species" (subset of 20)
    ↓
-   Confidence ≥ 25%?
-       YES → return YOLO's species  (badge: "YOLO · AnimalClue")
-       NO  → call Claude as backup  (badge: "Claude (YOLO was unsure)")
-              Claude null?          → "no scat detected" message
+CLIP advisor — run image through fine-tuned ViT-B/32
+   ↓
+Filter CLIP's top-5 to species with ≥20 training samples (drops noisy tail)
+   ↓
+Claude Opus 4.7 (the decider) ← image + hints + CLIP top-5 + 20-species cheat sheet
+   ↓
+Claude writes `analysis` (chain-of-thought) → commits to species → 1-sentence `reasoning`
+   ↓
+Card built · streamed back to UI as the final NDJSON event
 ```
+
+The whole pipeline streams progress in real time: the UI's analyzing screen advances step-by-step with the actual server work (no fake loaders).
 
 ---
 
@@ -115,27 +122,31 @@ Open http://localhost:3000.
 
 ```
 .
-├── app/                    Next.js app router
-│   ├── page.tsx            Home/landing
-│   ├── identify/           Upload → Analyze → Reveal flow
-│   ├── collection/         User's Dex grid
-│   ├── conservation/       Map + alerts + science partnership
-│   └── api/identify/       Server route that orchestrates YOLO + Claude
+├── app/                       Next.js app router
+│   ├── page.tsx               Home/landing (3-card hero stack + recent finds)
+│   ├── identify/              Upload → Hints → Analyze → Reveal flow
+│   ├── collection/            User's Dex grid (rarity + element filters, style preview)
+│   ├── conservation/          Map + alerts + science partnership
+│   └── api/identify/          Server route — streams NDJSON pipeline events
 ├── components/
-│   ├── cards/ScatCard.tsx  The collectible card component (the soul of the app)
-│   └── ui/                 Nav, Logo, Container
+│   ├── cards/ScatCard.tsx     The collectible card (element circle, rarity glow, stats)
+│   ├── cards/HeroCardDeck.tsx Home-page interactive card stack
+│   └── ui/                    Nav, Logo, Container
 ├── lib/
-│   ├── types.ts            ScatCard schema + species list + rarity inference
-│   ├── claude.ts           Claude Vision identification
-│   ├── identify.ts         Frontend client for /api/identify
-│   ├── collection.ts       localStorage-backed user collection
-│   └── mockIdentify.ts     Fallback when both AI paths fail
-├── public/art/             Painted animal illustrations (PNG)
+│   ├── types.ts               ScatCard schema + 20-species list + rarity inference
+│   ├── speciesAttributes.ts   Size/habitat/contents per species + scoreSpecies() hard filters
+│   ├── claude.ts              Claude Opus + system prompt with 20-species cheat sheet
+│   ├── identify.ts            Frontend stream reader for /api/identify
+│   ├── collection.ts          localStorage-backed user collection
+│   └── mockIdentify.ts        Fallback when both AI paths fail
+├── public/art/                20 species illustrations + 7 element icons (PNG)
 ├── scripts/
-│   ├── server.py           FastAPI inference server (YOLO)
-│   ├── inspect_model.py    Debug tool: list model classes
-│   └── models/             Place the .pt file here (gitignored)
-└── design_handoff_scat_dex/  Original design reference from Claude Design
+│   ├── _hf_space/             Deployable CLIP inference server (Docker SDK Space)
+│   │   ├── server.py          FastAPI CLIP server with logit-adjustment for class imbalance
+│   │   ├── poopidex_clip_v2.pt CLIP ViT-B/32 fine-tuned on 20 species
+│   │   └── Dockerfile
+│   └── models/                Training checkpoints (gitignored)
+└── design_handoff_scat_dex/   Original design reference from Claude Design
 ```
 
 ---
@@ -162,8 +173,8 @@ The YOLO inference server is deployed as a Docker-SDK Space on Hugging Face. The
 ## Credits
 
 - **Design** — generated with Claude Design, painted illustrations included
-- **AI model** — [AnimalClue: Recognizing Animals by Their Traces](https://huggingface.co/risashinoda/feces_yolo), ICCV 2025 (Shinoda et al.)
-- **Vision fallback** — Claude Sonnet 4 by Anthropic
+- **Specialist advisor model** — CLIP ViT-B/32 fine-tuned on the [AnimalClue dataset](https://huggingface.co/risashinoda/feces_yolo), ICCV 2025 (Shinoda et al.)
+- **Decider model** — Claude Opus 4.7 (Anthropic), with structured tool-use + extended deliberation via required `analysis` field
 - **Developer** — Joyce Zhou (TECHIN 510, GIX)
 - **Proposer** — Aaron (aarony630)
 
